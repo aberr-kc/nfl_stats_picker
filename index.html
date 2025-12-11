@@ -1,0 +1,1160 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8" />
+    <title>NFL Stat Picks</title>
+    <script src="fix_columns.js"></script>
+    <style>
+        body {
+            background: linear-gradient(135deg, #1a1a1a 0%, #2d2d2d 100%);
+            color: #ffffff;
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            margin: 0;
+            padding: 20px;
+            max-width: 1400px;
+            margin: 0 auto;
+            min-height: 100vh;
+        }
+        .controls {
+            background: linear-gradient(135deg, #d50a0a 0%, #ff6b35 100%);
+            padding: 20px;
+            border-radius: 12px;
+            margin-bottom: 20px;
+            box-shadow: 0 8px 32px rgba(213, 10, 10, 0.3);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            position: relative;
+            overflow: hidden;
+        }
+        .controls::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            height: 3px;
+            background: linear-gradient(90deg, #ffcc02, #d50a0a, #ffcc02);
+        }
+        .grid-container {
+            display: grid;
+            grid-template-columns: 2fr 1fr 1fr 1fr;
+            grid-template-rows: auto auto;
+            gap: 15px;
+        }
+        .stats-section {
+            background: linear-gradient(135deg, #1e1e1e 0%, #2a2a2a 100%);
+            padding: 15px 15px 0 15px;
+            border-radius: 12px;
+            box-shadow: 0 8px 32px rgba(0, 0, 0, 0.4);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            overflow-y: auto;
+            position: relative;
+            grid-column: 1 / 2;
+        }
+        .season-avg-section, .recent-form-section {
+            background: linear-gradient(135deg, #1e1e1e 0%, #2a2a2a 100%);
+            padding: 15px;
+            border-radius: 12px;
+            box-shadow: 0 8px 32px rgba(0, 0, 0, 0.4);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            overflow-y: auto;
+        }
+        .upcoming-game-section {
+            background: linear-gradient(135deg, #1e1e1e 0%, #2a2a2a 100%);
+            padding: 15px;
+            border-radius: 12px;
+            box-shadow: 0 8px 32px rgba(0, 0, 0, 0.4);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            overflow-y: auto;
+            grid-column: 1 / 5;
+        }
+
+        .stats-section::before {
+            content: '🏈';
+            position: absolute;
+            top: 15px;
+            right: 20px;
+            font-size: 24px;
+            opacity: 0.3;
+        }
+        table { 
+            border-collapse: collapse; 
+            margin-bottom: 10px;
+            width: 100%;
+            font-size: 13px;
+            font-weight: 500;
+            background: rgba(255, 255, 255, 0.02);
+            border-radius: 8px;
+            overflow: hidden;
+        }
+        th, td { 
+            padding: 8px 10px; 
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            text-align: left;
+        }
+        th { 
+            background: linear-gradient(135deg, #d50a0a 0%, #ff6b35 100%);
+            color: white;
+            font-weight: 700;
+            position: sticky;
+            top: 0;
+            text-transform: uppercase;
+            font-size: 12px;
+            letter-spacing: 0.5px;
+        }
+        td {
+            background: rgba(255, 255, 255, 0.03);
+            transition: background 0.2s ease;
+            font-weight: 500;
+        }
+        tr:hover td {
+            background: rgba(213, 10, 10, 0.1);
+        }
+        h1 { 
+            margin: 0 0 10px 0;
+            color: #ffffff;
+            font-size: 28px;
+            font-weight: 700;
+            text-shadow: 2px 2px 4px rgba(0, 0, 0, 0.5);
+        }
+        h2 { 
+            margin: 0 0 10px 0;
+            font-size: 16px;
+            color: #ffcc02;
+            border-bottom: 2px solid #d50a0a;
+            padding-bottom: 5px;
+            font-weight: 600;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+        }
+
+        select, input[type="text"] {
+            padding: 12px 16px;
+            margin: 5px 15px 5px 0;
+            border: 2px solid rgba(255, 255, 255, 0.2);
+            border-radius: 8px;
+            background: rgba(255, 255, 255, 0.1);
+            color: white;
+            font-size: 14px;
+            font-weight: 500;
+            transition: all 0.3s ease;
+        }
+        select:hover, input[type="text"]:hover {
+            border-color: #ffcc02;
+            background: rgba(255, 204, 2, 0.1);
+        }
+        select:focus, input[type="text"]:focus {
+            outline: none;
+            border-color: #d50a0a;
+            box-shadow: 0 0 0 3px rgba(213, 10, 10, 0.2);
+        }
+        input[type="text"]::placeholder {
+            color: rgba(255, 255, 255, 0.6);
+        }
+        option {
+            background: #2a2a2a;
+            color: white;
+        }
+        label {
+            color: #ffcc02;
+            font-weight: 600;
+            margin-right: 8px;
+            text-transform: uppercase;
+            font-size: 12px;
+            letter-spacing: 0.5px;
+        }
+        
+
+    </style>
+
+</head>
+<body>
+    <div class="controls">
+        <h1>🏈 NFL STAT PICKS</h1>
+        <label for="yearSelect">Season:</label>
+        <select id="yearSelect">
+            <option value="2025" selected>2025</option>
+            <option value="2024">2024</option>
+            <option value="2023">2023</option>
+            <option value="2022">2022</option>
+            <option value="2021">2021</option>
+        </select>
+        <label for="playerSelect">Player:</label>
+        <input type="text" id="playerSelect" list="playerList" placeholder="Type player name..." autocomplete="off">
+        <datalist id="playerList"></datalist>
+        <button id="generatePicks" style="padding: 12px 20px; margin-left: 15px; background: linear-gradient(135deg, #ffcc02 0%, #d50a0a 100%); color: white; border: none; border-radius: 8px; font-weight: bold; cursor: pointer; transition: all 0.3s ease;">Generate Picks</button>
+    </div>
+
+    <div class="grid-container">
+        <div class="stats-section">
+            <h2>📊 Weekly Performance</h2>
+            <div id="statsOutput">Select a player to see stats.</div>
+        </div>
+        
+        <div class="season-avg-section">
+            <h2>📈 Season Averages</h2>
+            <div id="seasonAvgOutput">Select a player and year to see season averages.</div>
+        </div>
+        
+        <div class="recent-form-section">
+            <h2>🔥 Recent Form (5)</h2>
+            <div id="recentAvgOutput">Select a player and year to see recent 5 games average.</div>
+        </div>
+        
+        <div class="recent-form-section">
+            <h2>🔥 Recent Form (3)</h2>
+            <div id="recent3AvgOutput">Select a player and year to see recent 3 games average.</div>
+        </div>
+        
+        <div class="odds-section" style="grid-column: 1 / 5; background: linear-gradient(135deg, #1e1e1e 0%, #2a2a2a 100%); padding: 15px; border-radius: 12px; box-shadow: 0 8px 32px rgba(0, 0, 0, 0.4); border: 1px solid rgba(255, 255, 255, 0.1);">
+            <h2>💰 Betting Lines</h2>
+            <div id="odds-last-updated" style="font-size: 11px; color: #ccc; margin: -5px 0 10px 0; font-style: italic;"></div>
+            <div id="odds-container">
+                <div style="text-align: center; color: #ffcc02; font-style: italic; padding: 15px;">Select a player to view betting odds</div>
+            </div>
+        </div>
+        
+        <div class="upcoming-game-section">
+            <h2>🏈 Upcoming Game</h2>
+            <div id="upcoming-game-container">
+                <div style="text-align: center; color: #ffcc02; font-style: italic; padding: 15px;">Select a player to view upcoming game</div>
+            </div>
+        </div>
+        
+        <div class="picks-section" style="grid-column: 1 / 5; background: linear-gradient(135deg, #1e1e1e 0%, #2a2a2a 100%); padding: 15px; border-radius: 12px; box-shadow: 0 8px 32px rgba(0, 0, 0, 0.4); border: 1px solid rgba(255, 255, 255, 0.1); display: none;">
+            <h2>🎯 Generated Picks</h2>
+            <div id="picks-container">
+                <div style="text-align: center; color: #ffcc02; font-style: italic; padding: 15px;">Click "Generate Picks" to analyze all players</div>
+            </div>
+        </div>
+    </div>
+
+
+
+    <script>
+    document.addEventListener('DOMContentLoaded', () => {
+        const yearSelect = document.getElementById('yearSelect');
+        const playerSelect = document.getElementById('playerSelect');
+        const playerList = document.getElementById('playerList');
+
+        async function fetchPlayers() {
+            try {
+                const res = await fetch('/players');
+                if (!res.ok) {
+                    console.error("Failed to fetch players:", res.status, res.statusText);
+                    return;
+                }
+                const players = await res.json();
+                console.log('Fetched players:', players.length);
+                
+                // Populate datalist
+                playerList.innerHTML = '';
+                players.forEach(player => {
+                    const option = document.createElement('option');
+                    option.value = player;
+                    playerList.appendChild(option);
+                });
+            } catch (error) {
+                console.error('Error fetching players:', error);
+            }
+        }
+
+        fetchPlayers();
+
+        playerSelect.addEventListener('input', () => {
+            fetchPlayerStats(playerSelect.value, yearSelect.value);
+        });
+
+        yearSelect.addEventListener('change', () => {
+            fetchPlayerStats(playerSelect.value, yearSelect.value);
+        });
+        
+        document.getElementById('generatePicks').addEventListener('click', generatePicks);
+    });
+
+    async function fetchPlayerStats(player, year) {
+        if (!player) {
+            document.getElementById('statsOutput').textContent = 'Select a player to see stats.';
+            document.getElementById('seasonAvgOutput').textContent = 'Select a player and year to see season averages.';
+            document.getElementById('recentAvgOutput').textContent = 'Select a player and year to see recent 5 games average.';
+            document.getElementById('recent3AvgOutput').textContent = 'Select a player and year to see recent 3 games average.';
+            document.getElementById('odds-container').innerHTML = '<div style="text-align: center; color: #ffcc02; font-style: italic; padding: 20px;">Select a player to view betting odds</div>';
+            document.getElementById('odds-last-updated').textContent = '';
+            document.getElementById('upcoming-game-container').innerHTML = '<div style="text-align: center; color: #ffcc02; font-style: italic; padding: 15px;">Select a player to view upcoming game</div>';
+            return;
+        }
+
+        // Weekly stats
+        const res = await fetch(`/stats/year/${year}/player/${encodeURIComponent(player)}`);
+        const weeklyData = res.ok ? await res.json() : [];
+        document.getElementById('statsOutput').innerHTML = renderSeasonStatsTable(weeklyData);
+
+        // Season averages
+        const avgRes = await fetch(`/stats/year/${year}/player/${encodeURIComponent(player)}/season_avg`);
+        const avgData = avgRes.ok ? await avgRes.json() : {};
+        document.getElementById('seasonAvgOutput').innerHTML = renderSeasonAvgTable(avgData);
+
+        // Recent 5 games averages
+        const recentRes = await fetch(`/stats/recent_average/${year}/player/${encodeURIComponent(player)}`);
+        const recentData = recentRes.ok ? await recentRes.json() : {};
+        document.getElementById('recentAvgOutput').innerHTML = renderSeasonAvgTable(recentData);
+        
+        // Recent 3 games averages
+        const recent3Res = await fetch(`/stats/recent_3_average/${year}/player/${encodeURIComponent(player)}`);
+        const recent3Data = recent3Res.ok ? await recent3Res.json() : {};
+        document.getElementById('recent3AvgOutput').innerHTML = renderSeasonAvgTable(recent3Data);
+
+        // Betting odds
+        renderOddsTable(player);
+        
+        // Upcoming game
+        renderUpcomingGame(player);
+    }
+
+    function renderSeasonStatsTable(stats) {
+        if (!stats || stats.length === 0) return 'No weekly stats found.';
+        const pos = stats[0].position || '';
+        const fieldsByPos = {
+            QB: ['week','opponent_team','completions','attempts','passing_yards','passing_tds','interceptions','rushing_yards','rushing_tds'],
+            WR: ['week','opponent_team','targets','receptions','receiving_yards','receiving_tds','rushing_yards'],
+            RB: ['week','opponent_team','carries','rushing_yards','rushing_tds','rushing_fumbles','targets','receptions','receiving_yards'],
+            TE: ['week','opponent_team','targets','receptions','receiving_yards','receiving_tds','rushing_yards'],
+        };
+        let fields = fieldsByPos[pos] || Object.keys(stats[0]);
+        
+        // Add targets if exists and not in fields
+        if (!fields.includes('targets') && stats[0].targets !== undefined && ['WR','RB','TE'].includes(pos)) {
+            const insertIndex = fields.indexOf('receptions') > -1 ? fields.indexOf('receptions') : 2;
+            fields.splice(insertIndex, 0, 'targets');
+        }
+        
+        // Filter out columns that have no data (all null/empty values)
+        fields = fields.filter(field => {
+            if (field === 'week') return true; // Always keep week column
+            return stats.some(row => {
+                const value = row[field];
+                return value !== null && value !== undefined && value !== '' && value !== 0;
+            });
+        });
+        stats.sort((a,b)=>a.week-b.week);
+        let table = '<table><thead><tr><th>Week</th>';
+        fields.forEach(f=>{if(f!=='week') table+=`<th>${f}</th>`;});
+        table += '</tr></thead><tbody>';
+        stats.forEach(w=>{
+            table+='<tr><td>'+w.week+'</td>';
+            fields.forEach(f=>{
+                if(f!=='week'){
+                    let v=w[f]; 
+                    if(v===null||v===undefined||v==='') v='-';
+                    table+=`<td>${v}</td>`;
+                }
+            });
+            table+='</tr>';
+        });
+        table+='</tbody></table>';
+        return table;
+    }
+
+    function renderSeasonAvgTable(avgStats) {
+        if(!avgStats||Object.keys(avgStats).length===0) return 'No data found.';
+        const pos = avgStats.position || '';
+        const fieldsByPos = {
+            QB: ['completions','attempts','passing_yards','passing_tds','interceptions','rushing_yards','rushing_tds'],
+            WR: ['targets','receptions','receiving_yards','receiving_tds','rushing_yards'],
+            RB: ['carries','rushing_yards','rushing_tds','rushing_fumbles','targets','receptions','receiving_yards'],
+            TE: ['targets','receptions','receiving_yards','receiving_tds','rushing_yards'],
+        };
+        let fields = fieldsByPos[pos] || Object.keys(avgStats);
+        // Ensure targets is included for RB if it exists
+        if (!fields.includes('targets') && avgStats.targets !== undefined && ['WR','RB','TE'].includes(pos)) {
+            const insertIndex = fields.indexOf('receptions') > -1 ? fields.indexOf('receptions') : 0;
+            fields.splice(insertIndex, 0, 'targets');
+        }
+        // Filter out fields with no meaningful data
+        fields = fields.filter(f => {
+            const value = avgStats[f];
+            return value !== null && value !== undefined && value !== 0 && !isNaN(value);
+        });
+        let table='<table><thead><tr><th>Stat</th><th>Average</th></tr></thead><tbody>';
+        fields.forEach(f=>{if(f in avgStats){let v=avgStats[f]; if(typeof v==='number') v=v.toFixed(2); else if(v===null||v===undefined)v='-'; table+=`<tr><td>${f}</td><td>${v}</td></tr>`;}});
+        table+='</tbody></table>';
+        return table;
+    }
+
+    async function renderOddsTable(player) {
+    const container = document.getElementById("odds-container");
+    container.innerHTML = ""; // clear old content
+
+    if (!player) return;
+
+    try {
+        const res = await fetch(`/odds/player/${encodeURIComponent(player)}`);
+        if (!res.ok) throw new Error("Failed to fetch odds");
+
+        const data = await res.json();
+        if (!data || data.length === 0) {
+            container.innerHTML = `<div style="text-align: center; color: #ffcc02; padding: 20px;">No odds available for ${player}</div>`;
+            document.getElementById('odds-last-updated').textContent = '';
+            return;
+        }
+        
+        // Update last updated timestamp
+        const now = new Date();
+        const timestamp = now.toLocaleString('en-US', {
+            month: 'short',
+            day: 'numeric',
+            hour: '2-digit',
+            minute: '2-digit',
+            hour12: true
+        });
+        document.getElementById('odds-last-updated').textContent = `Last updated: ${timestamp}`;
+
+        // Deduplicate odds only within same bookmaker
+        const uniqueOdds = [];
+        const seen = new Set();
+        
+        data.forEach(odd => {
+            const key = `${odd.bookmaker}-${odd.market}-${odd.line}-${odd.price}`;
+            if (!seen.has(key)) {
+                seen.add(key);
+                uniqueOdds.push(odd);
+            }
+        });
+        
+        // Group deduplicated odds by market type
+        const groupedOdds = {};
+        uniqueOdds.forEach(odd => {
+            const market = (odd.market || '').replace(/_/g, ' ');
+            if (!groupedOdds[market]) {
+                groupedOdds[market] = [];
+            }
+            groupedOdds[market].push(odd);
+        });
+
+        // Create horizontal layout for all markets
+        const marketsContainer = document.createElement('div');
+        marketsContainer.style.cssText = 'display: flex; flex-direction: row; gap: 15px; flex-wrap: wrap;';
+        
+        Object.keys(groupedOdds).forEach(market => {
+            const marketRow = document.createElement('div');
+            marketRow.style.cssText = 'background: rgba(255,255,255,0.05); border-radius: 6px; padding: 10px; flex: 1; min-width: 250px;';
+            
+            const marketHeader = document.createElement('div');
+            marketHeader.style.cssText = 'display: flex; align-items: center; margin-bottom: 8px;';
+            
+            const marketTitle = document.createElement('span');
+            marketTitle.style.cssText = 'color: #ffcc02; font-size: 12px; font-weight: bold; text-transform: uppercase; letter-spacing: 0.5px; min-width: 120px;';
+            marketTitle.textContent = market;
+            marketHeader.appendChild(marketTitle);
+            
+            const oddsRow = document.createElement('div');
+            oddsRow.style.cssText = 'display: flex; gap: 8px; flex-wrap: wrap; justify-content: center;';
+            
+            groupedOdds[market].forEach(odd => {
+                const oddChip = document.createElement('div');
+                oddChip.style.cssText = 'background: rgba(213,10,10,0.15); border: 1px solid rgba(255,255,255,0.2); border-radius: 4px; padding: 4px 8px; min-width: 80px; text-align: center; transition: all 0.2s ease; cursor: pointer;';
+                oddChip.onmouseover = () => oddChip.style.background = 'rgba(213,10,10,0.3)';
+                oddChip.onmouseout = () => oddChip.style.background = 'rgba(213,10,10,0.15)';
+                
+                const bookmaker = document.createElement('div');
+                bookmaker.style.cssText = 'font-size: 9px; color: #ccc; margin-bottom: 2px; text-transform: uppercase;';
+                bookmaker.textContent = (odd.bookmaker || 'Unknown').substring(0, 8);
+                
+                const linePrice = document.createElement('div');
+                linePrice.style.cssText = 'font-size: 11px; color: #ffcc02; font-weight: bold;';
+                linePrice.textContent = `${odd.line ?? '-'} (${odd.price || ''})`;
+                
+                oddChip.appendChild(bookmaker);
+                oddChip.appendChild(linePrice);
+                oddsRow.appendChild(oddChip);
+            });
+            
+            marketRow.appendChild(marketHeader);
+            marketRow.appendChild(oddsRow);
+            marketsContainer.appendChild(marketRow);
+        });
+        
+        container.appendChild(marketsContainer);
+    } catch (err) {
+        container.innerHTML = `<div style="text-align: center; color: #ff6b35; padding: 20px;">Error fetching odds</div>`;
+        document.getElementById('odds-last-updated').textContent = '';
+        console.error(err);
+    }
+}
+
+    async function renderUpcomingGame(player) {
+        const container = document.getElementById('upcoming-game-container');
+        container.innerHTML = '';
+        
+        if (!player) {
+            container.innerHTML = '<div style="text-align: center; color: #ffcc02; font-style: italic; padding: 15px;">Select a player to view upcoming game</div>';
+            return;
+        }
+        
+        try {
+            const res = await fetch(`/upcoming-game/player/${encodeURIComponent(player)}`);
+            
+            if (!res.ok) throw new Error('Failed to fetch upcoming game');
+            
+            const gameData = await res.json();
+            const eventName = gameData.matchup || 'Unknown Matchup';
+            
+            const gameDiv = document.createElement('div');
+            
+            const matchupTitle = document.createElement('div');
+            matchupTitle.style.cssText = 'color: #ffcc02; font-weight: bold; font-size: 16px; margin-bottom: 15px; text-align: center;';
+            matchupTitle.textContent = eventName;
+            
+            gameDiv.appendChild(matchupTitle);
+            
+            // Add team stats if available
+            if (eventName.includes(' vs ')) {
+                const teams = eventName.split(' vs ');
+                const teamMapping = {
+                    'arizona cardinals': 'ARI', 'atlanta falcons': 'ATL', 'baltimore ravens': 'BAL',
+                    'buffalo bills': 'BUF', 'carolina panthers': 'CAR', 'chicago bears': 'CHI',
+                    'cincinnati bengals': 'CIN', 'cleveland browns': 'CLE', 'dallas cowboys': 'DAL',
+                    'denver broncos': 'DEN', 'detroit lions': 'DET', 'green bay packers': 'GB',
+                    'houston texans': 'HOU', 'indianapolis colts': 'IND', 'jacksonville jaguars': 'JAX',
+                    'kansas city chiefs': 'KC', 'las vegas raiders': 'LV', 'los angeles chargers': 'LAC',
+                    'los angeles rams': 'LAR', 'miami dolphins': 'MIA', 'minnesota vikings': 'MIN',
+                    'new england patriots': 'NE', 'new orleans saints': 'NO', 'new york giants': 'NYG',
+                    'new york jets': 'NYJ', 'philadelphia eagles': 'PHI', 'pittsburgh steelers': 'PIT',
+                    'san francisco 49ers': 'SF', 'seattle seahawks': 'SEA', 'tampa bay buccaneers': 'TB',
+                    'tennessee titans': 'TEN', 'washington commanders': 'WAS'
+                };
+                
+                // Get team abbreviations
+                const team1Name = teams[0].trim().toLowerCase();
+                const team2Name = teams[1].trim().toLowerCase();
+                const team1Abbrev = teamMapping[team1Name] || 'UNK';
+                const team2Abbrev = teamMapping[team2Name] || 'UNK';
+                
+                console.log('Team abbreviations:', team1Abbrev, team2Abbrev);
+                
+                // Create stats table immediately
+                const statsTable = document.createElement('table');
+                statsTable.style.cssText = 'width: 100%; margin-top: 15px; font-size: 11px;';
+                
+                // Create header
+                const thead = document.createElement('thead');
+                const headerRow = document.createElement('tr');
+                headerRow.innerHTML = `
+                    <th style="text-align: left;">Statistic</th>
+                    <th>${team1Abbrev} Off</th>
+                    <th>${team1Abbrev} Def</th>
+                    <th>${team2Abbrev} Off</th>
+                    <th>${team2Abbrev} Def</th>
+                    <th>League Avg Def</th>
+                `;
+                thead.appendChild(headerRow);
+                statsTable.appendChild(thead);
+                
+                // Create body
+                const tbody = document.createElement('tbody');
+                
+                statsTable.appendChild(tbody);
+                gameDiv.appendChild(statsTable);
+                
+                // Fetch team stats and league averages
+                Promise.all([
+                    fetch(`/team-stats/${team1Abbrev}`).then(r => r.json()).catch(() => ({})),
+                    fetch(`/team-stats/${team2Abbrev}`).then(r => r.json()).catch(() => ({})),
+                    fetch('/league-averages').then(r => r.json()).catch(() => ({})),
+                    fetch('/league-defensive-averages').then(r => r.json()).catch(() => ({}))
+                ]).then(([team1Stats, team2Stats, leagueAvg, leagueDefAvg]) => {
+                    console.log('=== MAIN GAME DEBUG ===');
+                    console.log('Team1 full response:', team1Stats);
+                    console.log('Team2 full response:', team2Stats);
+                    console.log('Team1 defense object:', team1Stats.defense);
+                    console.log('Team2 defense object:', team2Stats.defense);
+                    console.log('Team1 all_stats:', team1Stats.all_stats);
+                    console.log('Team2 all_stats:', team2Stats.all_stats);
+                    
+                    // Clear tbody and rebuild with actual stats
+                    tbody.innerHTML = '';
+                    
+                    // Only show specific stats
+                    const targetStats = ['Rush Yards/Game', 'Pass Yards/Game'];
+                    
+                    // Add rows for target stats only
+                    targetStats.forEach(stat => {
+                        const row = document.createElement('tr');
+                        
+                        // Determine stat values for each team
+                        let team1Offense = '-', team1Defense = '-', team2Offense = '-', team2Defense = '-';
+                        
+                        if (stat === 'Rush Yards/Game') {
+                            team1Offense = team1Stats.rushing?.[stat] || '-';
+                            team2Offense = team2Stats.rushing?.[stat] || '-';
+                            team1Defense = team1Stats.defense?.['Opp Rush Yards/Game'] || 
+                                          team1Stats.defense?.['Opp Rush Yards'] || 
+                                          team1Stats.defense?.['Opponent Rush Yards/Game'] || 
+                                          findDefensiveStat(team1Stats, 'rush') || '-';
+                            team2Defense = team2Stats.defense?.['Opp Rush Yards/Game'] || 
+                                          team2Stats.defense?.['Opp Rush Yards'] || 
+                                          team2Stats.defense?.['Opponent Rush Yards/Game'] || 
+                                          findDefensiveStat(team2Stats, 'rush') || '-';
+                        } else if (stat === 'Pass Yards/Game') {
+                            team1Offense = team1Stats.passing?.[stat] || '-';
+                            team2Offense = team2Stats.passing?.[stat] || '-';
+                            team1Defense = team1Stats.defense?.['Opp Pass Yards/Game'] || 
+                                          team1Stats.defense?.['Opp Pass Yards'] || 
+                                          team1Stats.defense?.['Opponent Pass Yards/Game'] || 
+                                          findDefensiveStat(team1Stats, 'pass') || '-';
+                            team2Defense = team2Stats.defense?.['Opp Pass Yards/Game'] || 
+                                          team2Stats.defense?.['Opp Pass Yards'] || 
+                                          team2Stats.defense?.['Opponent Pass Yards/Game'] || 
+                                          findDefensiveStat(team2Stats, 'pass') || '-';
+                        }
+                        
+                        let leagueDefAvgValue = '-';
+                        if (stat === 'Rush Yards/Game') {
+                            leagueDefAvgValue = leagueDefAvg.opp_rush_yards_game || '-';
+                        } else if (stat === 'Pass Yards/Game') {
+                            leagueDefAvgValue = leagueDefAvg.opp_pass_yards_game || '-';
+                        }
+                        
+                        row.innerHTML = `
+                            <td style="color: #ffcc02; font-weight: bold;">${stat}</td>
+                            <td>${team1Offense}</td>
+                            <td>${team1Defense}</td>
+                            <td>${team2Offense}</td>
+                            <td>${team2Defense}</td>
+                            <td>${leagueDefAvgValue}</td>
+                        `;
+                        tbody.appendChild(row);
+                    });
+                    
+                    if (targetStats.length === 0) {
+                        const row = document.createElement('tr');
+                        row.innerHTML = '<td colspan="6" style="text-align: center; color: #ccc;">No team statistics available</td>';
+                        tbody.appendChild(row);
+                    }
+                    
+                }).catch(err => {
+                    console.error('Error loading team stats:', err);
+                    tbody.innerHTML = '<tr><td colspan="6" style="text-align: center; color: #ccc;">Team statistics not available</td></tr>';
+                });
+            }
+            
+            container.appendChild(gameDiv);
+            
+        } catch (err) {
+            console.error('Error in renderUpcomingGame:', err);
+            container.innerHTML = '<div style="text-align: center; color: #ff6b35; padding: 15px;">Error loading upcoming game</div>';
+        }
+    }
+    
+    let allPicks = [];
+    let currentPage = 0;
+    const PICKS_PER_PAGE = 10;
+    
+    async function generatePicks() {
+        const button = document.getElementById('generatePicks');
+        const picksSection = document.querySelector('.picks-section');
+        const picksContainer = document.getElementById('picks-container');
+        
+        // Clear dismissed players and reset pagination
+        dismissedPlayers.clear();
+        allPicks = [];
+        currentPage = 0;
+        
+        // Show loading state
+        button.textContent = 'Generating...';
+        button.disabled = true;
+        picksSection.style.display = 'block';
+        picksContainer.innerHTML = '<div style="text-align: center; color: #ffcc02; padding: 20px;">Analyzing players and generating picks...</div>';
+        
+        try {
+            const res = await fetch('/generate-picks');
+            const data = await res.json();
+            
+            if (data.success) {
+                const players = data.players || [];
+                if (players.length === 0) {
+                    picksContainer.innerHTML = '<div style="text-align: center; color: #ffcc02; padding: 20px;">No flagged players found.</div>';
+                    const picksTitle = document.querySelector('.picks-section h2');
+                    if (picksTitle) {
+                        picksTitle.innerHTML = '🎯 Generated Picks';
+                    }
+                } else {
+                    allPicks = formatPicksFromJSON(players);
+                    displayPicksPage();
+                }
+            } else {
+                picksContainer.innerHTML = `<div style="color: #ff6b35; padding: 20px;">Error generating picks: ${data.error}</div>`;
+            }
+        } catch (err) {
+            console.error('Error generating picks:', err);
+            picksContainer.innerHTML = '<div style="color: #ff6b35; padding: 20px;">Error generating picks</div>';
+        } finally {
+            button.textContent = 'Generate Picks';
+            button.disabled = false;
+        }
+    }
+    
+    function displayPicksPage() {
+        const picksContainer = document.getElementById('picks-container');
+        const startIndex = currentPage * PICKS_PER_PAGE;
+        const endIndex = Math.min(startIndex + PICKS_PER_PAGE, allPicks.length);
+        const pagePicksHtml = allPicks.slice(startIndex, endIndex).join('');
+        
+        const totalPages = Math.ceil(allPicks.length / PICKS_PER_PAGE);
+        const paginationHtml = `
+            <div style="display: flex; justify-content: center; align-items: center; gap: 15px; margin: 20px 0; padding: 15px; background: rgba(255,255,255,0.05); border-radius: 8px;">
+                <button onclick="previousPage()" ${currentPage === 0 ? 'disabled' : ''} 
+                    style="padding: 8px 16px; background: ${currentPage === 0 ? '#666' : '#d50a0a'}; color: white; border: none; border-radius: 4px; cursor: ${currentPage === 0 ? 'not-allowed' : 'pointer'};">← Previous</button>
+                <span style="color: #ffcc02; font-weight: bold;">Page ${currentPage + 1} of ${totalPages} (${startIndex + 1}-${endIndex} of ${allPicks.length})</span>
+                <button onclick="nextPage()" ${currentPage >= totalPages - 1 ? 'disabled' : ''}
+                    style="padding: 8px 16px; background: ${currentPage >= totalPages - 1 ? '#666' : '#d50a0a'}; color: white; border: none; border-radius: 4px; cursor: ${currentPage >= totalPages - 1 ? 'not-allowed' : 'pointer'};">Next →</button>
+            </div>
+        `;
+        
+        picksContainer.innerHTML = paginationHtml + pagePicksHtml + paginationHtml;
+        
+        // Update title with total count
+        const picksTitle = document.querySelector('.picks-section h2');
+        if (picksTitle) {
+            picksTitle.innerHTML = `🎯 Generated Picks (${allPicks.length})`;
+        }
+        
+        // Load game info for visible picks
+        setTimeout(() => {
+            const visiblePicks = allPicks.slice(startIndex, endIndex);
+            visiblePicks.forEach((_, index) => {
+                const actualIndex = startIndex + index;
+                // Extract player name from pick HTML (this is a simplified approach)
+                const tempDiv = document.createElement('div');
+                tempDiv.innerHTML = allPicks[actualIndex];
+                const playerElement = tempDiv.querySelector('h3');
+                if (playerElement) {
+                    const playerName = playerElement.textContent.split(' - ')[0];
+                    const playerId = playerElement.onclick?.toString().match(/'([^']+)'/)?.[1];
+                    if (playerId) {
+                        renderPlayerGameInfo(playerName, playerId);
+                    }
+                }
+            });
+        }, 100);
+    }
+    
+    function nextPage() {
+        const totalPages = Math.ceil(allPicks.length / PICKS_PER_PAGE);
+        if (currentPage < totalPages - 1) {
+            currentPage++;
+            displayPicksPage();
+        }
+    }
+    
+    function previousPage() {
+        if (currentPage > 0) {
+            currentPage--;
+            displayPicksPage();
+        }
+    }
+    
+    function formatPicksFromJSON(players) {
+        if (!players || players.length === 0) {
+            return [];
+        }
+        
+        // Create separate entries for each stat type
+        let playerStatEntries = [];
+        
+        for (const playerData of players) {
+            const player = playerData.player;
+            const matchup = playerData.matchup;
+            const stats = playerData.stats || [];
+            
+            // Group stats by stat type
+            const statGroups = {};
+            stats.forEach(stat => {
+                const statType = stat.stat;
+                if (!statGroups[statType]) {
+                    statGroups[statType] = [];
+                }
+                statGroups[statType].push(stat);
+            });
+            
+            // Create separate entry for each stat type
+            Object.keys(statGroups).forEach(statType => {
+                const maxProb = Math.max(...statGroups[statType].map(s => s.probabilityOver || 0));
+                playerStatEntries.push({
+                    player: player,
+                    matchup: matchup,
+                    statType: statType,
+                    stats: statGroups[statType],
+                    maxProbability: maxProb
+                });
+            });
+        }
+        
+        // Sort by highest probability
+        playerStatEntries.sort((a, b) => b.maxProbability - a.maxProbability);
+        
+        // Return array of HTML strings instead of concatenated HTML
+        return playerStatEntries.map(entry => 
+            formatPlayerStatSection(entry.player, entry.matchup, entry.statType, entry.stats)
+        );
+    }
+    
+    function formatPicksOutput(output) {
+        if (!output || output.trim() === '') {
+            return '<div style="text-align: center; color: #ffcc02; padding: 20px;">No flagged players found.</div>';
+        }
+        
+        const lines = output.split('\n');
+        let html = '';
+        let currentPlayer = null;
+        let currentMatchup = null;
+        let flaggedStats = [];
+        
+        for (let line of lines) {
+            line = line.trim();
+            
+            // Check for flagged player line
+            if (line.startsWith('Flagged stats for ')) {
+                // Save previous player if exists
+                if (currentPlayer && flaggedStats.length > 0) {
+                    html += formatPlayerSection(currentPlayer, currentMatchup, flaggedStats);
+                }
+                
+                // Parse new player
+                const match = line.match(/Flagged stats for (.+?) - (.+):/);
+                if (match) {
+                    currentPlayer = match[1];
+                    currentMatchup = match[2];
+                    flaggedStats = [];
+                }
+            }
+            // Check for stat lines
+            else if (line.includes('Player=') && line.includes('Stat=') && line.includes('Line=')) {
+                const statMatch = line.match(/Player=(.+?), Bookmaker=(.+?), Stat=(.+?), Player Value=(.+?), Line=(.+?), Diff=(.+?), Std Dev=(.+?), Rule=(.+)/);
+                if (statMatch) {
+                    flaggedStats.push({
+                        bookmaker: statMatch[2],
+                        stat: statMatch[3],
+                        playerValue: statMatch[4],
+                        line: statMatch[5],
+                        diff: statMatch[6],
+                        stdDev: statMatch[7],
+                        rule: statMatch[8]
+                    });
+                }
+            }
+        }
+        
+        // Add last player
+        if (currentPlayer && flaggedStats.length > 0) {
+            html += formatPlayerSection(currentPlayer, currentMatchup, flaggedStats);
+        }
+        
+        return html || '<div style="text-align: center; color: #ffcc02; padding: 20px;">No flagged players found.</div>';
+    }
+    
+    // Track dismissed players
+    let dismissedPlayers = new Set();
+    
+    function formatPlayerStatSection(player, matchup, statType, stats) {
+        const playerId = `${player.replace(/\s+/g, '_')}_${statType}`;
+        
+        // Skip if player-stat combination was dismissed
+        if (dismissedPlayers.has(playerId)) {
+            return '';
+        }
+        
+        let html = `
+            <div id="player_${playerId}" style="margin-bottom: 15px; background: rgba(255,255,255,0.05); border-radius: 8px; overflow: hidden;">
+                <div onclick="togglePlayer('${playerId}')" style="padding: 15px; cursor: pointer; background: rgba(213,10,10,0.1); border-bottom: 1px solid rgba(255,255,255,0.1);">
+                    <h3 onclick="loadPlayerStats('${player}', event)" style="color: #ffcc02; margin: 0 0 5px 0; font-size: 16px; display: inline-block; cursor: pointer; text-decoration: underline;" title="Click to load player stats">${player} - ${statType.replace('_', ' ').toUpperCase()}</h3>
+                    <span onclick="closePlayerStat('${playerId}', event)" style="float: right; color: #ff6b35; font-size: 16px; margin-left: 10px; cursor: pointer; padding: 2px 6px; border-radius: 3px; background: rgba(255,107,53,0.2);" title="Close">X</span>
+                    <span id="arrow_${playerId}" style="float: right; color: #ffcc02; font-size: 18px;">▼</span>
+                    <div style="color: #ccc; font-size: 14px;">${matchup}</div>
+                </div>
+                <div id="content_${playerId}" style="padding: 15px; display: block;">
+                    <table style="width: 100%; font-size: 12px;">
+                        <thead>
+                            <tr>
+                                <th>Stat</th>
+                                <th>Player Avg (3)</th>
+                                <th>Adjusted Stat</th>
+                                <th>Adjustments</th>
+                                <th>Line</th>
+                                <th>Difference</th>
+                                <th>Bookmaker</th>
+                                <th>Probability</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+        `;
+        
+            // Sort stats by highest probability over
+        stats.sort((a, b) => {
+            const probA = a.probabilityOver || 0;
+            const probB = b.probabilityOver || 0;
+            return probB - probA; // Highest probability first
+        });
+        
+        stats.forEach(stat => {
+            let adjustedValue = '-';
+            if (stat.stat === 'passing_yards' && stat.adjustedPassingYards) {
+                adjustedValue = stat.adjustedPassingYards;
+            } else if (stat.stat === 'rushing_yards' && stat.adjustedRushingYards) {
+                adjustedValue = stat.adjustedRushingYards;
+            } else if (stat.stat === 'receiving_yards' && stat.adjustedReceivingYards) {
+                adjustedValue = stat.adjustedReceivingYards;
+            } else if (stat.stat === 'receptions' && stat.adjustedReceptions) {
+                adjustedValue = stat.adjustedReceptions;
+            }
+            
+            const playerValue = stat.player_value || stat.playerValue || '-';
+            const difference = stat.difference || stat.diff || '-';
+            const probability = stat.probabilityOver && stat.probabilityUnder ? 
+                `${stat.probabilityOver}% Over | ${stat.probabilityUnder}% Under` : '-';
+            
+            // Format adjustment details
+            let adjustmentDisplay = '-';
+            if (stat.adjustmentDetails) {
+                const adj = stat.adjustmentDetails;
+                const changeColor = adj.changePct > 0 ? '#4CAF50' : '#f44336';
+                const changeIcon = adj.changePct > 0 ? '+' : '-';
+                const gameScriptText = adj.gameScript ? ' (GS)' : '';
+                const explanation = adj.explanation || 'Adjustment applied';
+                adjustmentDisplay = `
+                    <div style="color: ${changeColor}; font-size: 10px; font-weight: bold;">
+                        ${changeIcon}${Math.abs(adj.changePct)}%${gameScriptText}
+                    </div>
+                    <div style="color: #ccc; font-size: 9px; font-style: italic; margin-top: 2px; line-height: 1.2;">
+                        ${explanation}
+                    </div>
+                `;
+            }
+            
+            html += `
+                <tr>
+                    <td style="color: #ffcc02; font-weight: bold;">${stat.stat}</td>
+                    <td>${playerValue}</td>
+                    <td>${adjustedValue}</td>
+                    <td>${adjustmentDisplay}</td>
+                    <td style="font-weight: bold;">${stat.line}</td>
+                    <td style="color: ${parseFloat(difference) > 0 ? '#4CAF50' : '#f44336'};">${difference}</td>
+                    <td>${stat.bookmaker}</td>
+                    <td style="font-size: 10px;">${probability}</td>
+                </tr>
+            `;
+        });
+        
+        html += '</tbody></table>';
+        html += '<div id="game-content_' + playerId + '" style="margin-top: 15px;"></div>';
+        html += '</div></div>';
+        
+        // Load game info after rendering (use original player name)
+        setTimeout(() => renderPlayerGameInfo(player, playerId), 100);
+        
+        return html;
+    }
+    
+    function togglePlayer(playerId) {
+        const content = document.getElementById(`content_${playerId}`);
+        const arrow = document.getElementById(`arrow_${playerId}`);
+        
+        if (content.style.display === 'none') {
+            content.style.display = 'block';
+            arrow.textContent = '▼';
+        } else {
+            content.style.display = 'none';
+            arrow.textContent = '▶';
+        }
+    }
+    
+    function closePlayerStat(playerStatId, event) {
+        event.stopPropagation(); // Prevent toggle from firing
+        const playerElement = document.getElementById(`player_${playerStatId}`);
+        
+        if (playerElement) {
+            dismissedPlayers.add(playerStatId);
+            playerElement.remove();
+        }
+    }
+    
+    async function renderPlayerGameInfo(playerName, playerId) {
+        const container = document.getElementById(`game-content_${playerId}`);
+        if (!container) return;
+        
+        try {
+            const res = await fetch(`/odds/player/${encodeURIComponent(playerName)}`);
+            if (!res.ok) throw new Error('Failed to fetch odds');
+            
+            const data = await res.json();
+            if (!data || data.length === 0) {
+                container.innerHTML = 'No upcoming game found';
+                return;
+            }
+            
+            const gameOdd = data[0];
+            const eventName = gameOdd.event_name || 'Unknown Matchup';
+            
+            let html = `<div style="color: #ffcc02; font-weight: bold; margin-bottom: 10px;">${eventName}</div>`;
+            
+            // Add team stats if available
+            if (eventName.includes(' vs ')) {
+                const teams = eventName.split(' vs ');
+                const teamMapping = {
+                    'arizona cardinals': 'ARI', 'atlanta falcons': 'ATL', 'baltimore ravens': 'BAL',
+                    'buffalo bills': 'BUF', 'carolina panthers': 'CAR', 'chicago bears': 'CHI',
+                    'cincinnati bengals': 'CIN', 'cleveland browns': 'CLE', 'dallas cowboys': 'DAL',
+                    'denver broncos': 'DEN', 'detroit lions': 'DET', 'green bay packers': 'GB',
+                    'houston texans': 'HOU', 'indianapolis colts': 'IND', 'jacksonville jaguars': 'JAX',
+                    'kansas city chiefs': 'KC', 'las vegas raiders': 'LV', 'los angeles chargers': 'LAC',
+                    'los angeles rams': 'LAR', 'miami dolphins': 'MIA', 'minnesota vikings': 'MIN',
+                    'new england patriots': 'NE', 'new orleans saints': 'NO', 'new york giants': 'NYG',
+                    'new york jets': 'NYJ', 'philadelphia eagles': 'PHI', 'pittsburgh steelers': 'PIT',
+                    'san francisco 49ers': 'SF', 'seattle seahawks': 'SEA', 'tampa bay buccaneers': 'TB',
+                    'tennessee titans': 'TEN', 'washington commanders': 'WAS'
+                };
+                
+                const team1Name = teams[0].trim().toLowerCase();
+                const team2Name = teams[1].trim().toLowerCase();
+                const team1Abbrev = teamMapping[team1Name] || 'UNK';
+                const team2Abbrev = teamMapping[team2Name] || 'UNK';
+                
+                html += `
+                    <table style="width: 100%; font-size: 11px; margin-top: 10px;">
+                        <thead>
+                            <tr>
+                                <th style="text-align: left;">Statistic</th>
+                                <th>${team1Abbrev} Off</th>
+                                <th>${team1Abbrev} Def</th>
+                                <th>${team2Abbrev} Off</th>
+                                <th>${team2Abbrev} Def</th>
+                                <th>League Avg Def</th>
+                            </tr>
+                        </thead>
+                        <tbody id="team-stats_${playerId}">
+                            <tr><td colspan="6" style="text-align: center; color: #ccc;">Loading team stats...</td></tr>
+                        </tbody>
+                    </table>
+                `;
+                
+                container.innerHTML = html;
+                
+                // Fetch team stats and league averages
+                Promise.all([
+                    fetch(`/team-stats/${team1Abbrev}`).then(r => r.json()).catch(() => ({})),
+                    fetch(`/team-stats/${team2Abbrev}`).then(r => r.json()).catch(() => ({})),
+                    fetch('/league-averages').then(r => r.json()).catch(() => ({})),
+                    fetch('/league-defensive-averages').then(r => r.json()).catch(() => ({}))
+                ]).then(([team1Stats, team2Stats, leagueAvg, leagueDefAvg]) => {
+                    const tbody = document.getElementById(`team-stats_${playerId}`);
+                    if (!tbody) return;
+                    
+                    console.log('=== PLAYER GAME DEBUG ===');
+                    console.log('Team1 full response:', team1Stats);
+                    console.log('Team2 full response:', team2Stats);
+                    console.log('Team1 defense object:', team1Stats.defense);
+                    console.log('Team2 defense object:', team2Stats.defense);
+                    console.log('Team1 all_stats:', team1Stats.all_stats);
+                    console.log('Team2 all_stats:', team2Stats.all_stats);
+                    
+                    tbody.innerHTML = '';
+                    const targetStats = ['Rush Yards/Game', 'Pass Yards/Game'];
+                    
+                    targetStats.forEach(stat => {
+                        const row = document.createElement('tr');
+                        let team1Offense = '-', team1Defense = '-', team2Offense = '-', team2Defense = '-';
+                        
+                        if (stat === 'Rush Yards/Game') {
+                            team1Offense = team1Stats.rushing?.[stat] || '-';
+                            team2Offense = team2Stats.rushing?.[stat] || '-';
+                            
+                            // Try multiple defensive stat name variations
+                            team1Defense = team1Stats.defense?.['Opp Rush Yards/Game'] || 
+                                          team1Stats.defense?.['Opp Rush Yards'] || 
+                                          team1Stats.defense?.['Opponent Rush Yards/Game'] || 
+                                          findDefensiveStat(team1Stats, 'rush') || '-';
+                            team2Defense = team2Stats.defense?.['Opp Rush Yards/Game'] || 
+                                          team2Stats.defense?.['Opp Rush Yards'] || 
+                                          team2Stats.defense?.['Opponent Rush Yards/Game'] || 
+                                          findDefensiveStat(team2Stats, 'rush') || '-';
+                        } else if (stat === 'Pass Yards/Game') {
+                            team1Offense = team1Stats.passing?.[stat] || '-';
+                            team2Offense = team2Stats.passing?.[stat] || '-';
+                            
+                            // Try multiple defensive stat name variations
+                            team1Defense = team1Stats.defense?.['Opp Pass Yards/Game'] || 
+                                          team1Stats.defense?.['Opp Pass Yards'] || 
+                                          team1Stats.defense?.['Opponent Pass Yards/Game'] || 
+                                          findDefensiveStat(team1Stats, 'pass') || '-';
+                            team2Defense = team2Stats.defense?.['Opp Pass Yards/Game'] || 
+                                          team2Stats.defense?.['Opp Pass Yards'] || 
+                                          team2Stats.defense?.['Opponent Pass Yards/Game'] || 
+                                          findDefensiveStat(team2Stats, 'pass') || '-';
+                        }
+                        
+                        let leagueDefAvgValue = '-';
+                        if (stat === 'Rush Yards/Game') {
+                            leagueDefAvgValue = leagueDefAvg.opp_rush_yards_game || '-';
+                        } else if (stat === 'Pass Yards/Game') {
+                            leagueDefAvgValue = leagueDefAvg.opp_pass_yards_game || '-';
+                        }
+                        
+                        row.innerHTML = `
+                            <td style="color: #ffcc02; font-weight: bold;">${stat}</td>
+                            <td>${team1Offense}</td>
+                            <td>${team1Defense}</td>
+                            <td>${team2Offense}</td>
+                            <td>${team2Defense}</td>
+                            <td>${leagueDefAvgValue}</td>
+                        `;
+                        tbody.appendChild(row);
+                    });
+                }).catch(() => {
+                    const tbody = document.getElementById(`team-stats_${playerId}`);
+                    if (tbody) tbody.innerHTML = '<tr><td colspan="6" style="text-align: center; color: #ccc;">Team stats unavailable</td></tr>';
+                });
+            } else {
+                container.innerHTML = html;
+            }
+            
+        } catch (err) {
+            container.innerHTML = 'Error loading game info';
+        }
+    }
+    
+    function findDefensiveStat(teamStats, statType) {
+        // Search through all available stats for defensive variations
+        const allStats = {...(teamStats.defense || {}), ...(teamStats.rushing || {}), ...(teamStats.passing || {}), ...(teamStats.all_stats || {})};
+        
+        console.log(`Looking for ${statType} defensive stat in:`, Object.keys(allStats));
+        
+        for (const [key, value] of Object.entries(allStats)) {
+            const keyLower = key.toLowerCase();
+            if ((keyLower.includes('opp') || keyLower.includes('opponent') || keyLower.includes('allowed')) && 
+                keyLower.includes(statType) && keyLower.includes('yard')) {
+                console.log(`Found defensive stat: ${key} = ${value}`);
+                return value;
+            }
+        }
+        console.log(`No defensive ${statType} stat found`);
+        return null;
+    }
+    
+    function loadPlayerStats(playerName, event) {
+        event.stopPropagation(); // Prevent toggle from firing
+        
+        // Set the player in the search box
+        const playerSelect = document.getElementById('playerSelect');
+        const yearSelect = document.getElementById('yearSelect');
+        
+        playerSelect.value = playerName;
+        
+        // Load stats for the current year
+        fetchPlayerStats(playerName, yearSelect.value);
+        
+        // Scroll to top to show the loaded stats
+        window.scrollTo({ top: 0, behavior: 'smooth' });
+    }
+    </script>
+</body>
+</html>
+

@@ -1,0 +1,206 @@
+{
+  "ARI": {
+    "rush_yards_game": "105.7",
+    "opp_rush_yards_game": "112.2",
+    "pass_yards_game": "227.8",
+    "opp_pass_yards_game": "221.4"
+  },
+  "ATL": {
+    "rush_yards_game": "119.9",
+    "opp_rush_yards_game": "138.5",
+    "pass_yards_game": "212.6",
+    "opp_pass_yards_game": "188.0"
+  },
+  "BAL": {
+    "rush_yards_game": "142.0",
+    "opp_rush_yards_game": "121.5",
+    "pass_yards_game": "180.0",
+    "opp_pass_yards_game": "232.6"
+  },
+  "BUF": {
+    "rush_yards_game": "147.6",
+    "opp_rush_yards_game": "153.0",
+    "pass_yards_game": "239.8",
+    "opp_pass_yards_game": "169.7",
+    "completions_game": "21.1",
+    "opp_completions_game": "14.0"
+  },
+  "CAR": {
+    "rush_yards_game": "127.1",
+    "opp_rush_yards_game": "113.1",
+    "pass_yards_game": "187.2",
+    "opp_pass_yards_game": "212.8"
+  },
+  "CHI": {
+    "rush_yards_game": "146.6",
+    "opp_rush_yards_game": "133.3",
+    "pass_yards_game": "227.2",
+    "opp_pass_yards_game": "231.3"
+  },
+  "CIN": {
+    "rush_yards_game": "81.4",
+    "opp_rush_yards_game": "160.9",
+    "pass_yards_game": "225.7",
+    "opp_pass_yards_game": "257.3"
+  },
+  "CLE": {
+    "rush_yards_game": "98.0",
+    "opp_rush_yards_game": "106.5",
+    "pass_yards_game": "159.3",
+    "opp_pass_yards_game": "167.0"
+  },
+  "DAL": {
+    "rush_yards_game": "120.0",
+    "opp_rush_yards_game": "131.4",
+    "pass_yards_game": "258.7",
+    "opp_pass_yards_game": "249.9",
+    "completions_game": "22.1",
+    "opp_completions_game": "23.3"
+  },
+  "DEN": {
+    "rush_yards_game": "122.3",
+    "opp_rush_yards_game": "88.5",
+    "pass_yards_game": "213.0",
+    "opp_pass_yards_game": "185.8"
+  },
+  "DET": {
+    "rush_yards_game": "130.1",
+    "opp_rush_yards_game": "99.7",
+    "pass_yards_game": "236.8",
+    "opp_pass_yards_game": "192.1",
+    "completions_game": "21.2",
+    "opp_completions_game": "17.4"
+  },
+  "GB": {
+    "rush_yards_game": "113.5",
+    "opp_rush_yards_game": "96.8",
+    "pass_yards_game": "230.5",
+    "opp_pass_yards_game": "195.3"
+  },
+  "HOU": {
+    "rush_yards_game": "107.6",
+    "opp_rush_yards_game": "87.1",
+    "pass_yards_game": "222.0",
+    "opp_pass_yards_game": "171.0"
+  },
+  "IND": {
+    "rush_yards_game": "145.3",
+    "opp_rush_yards_game": "92.3",
+    "pass_yards_game": "251.6",
+    "opp_pass_yards_game": "235.3"
+  },
+  "JAX": {
+    "rush_yards_game": "127.5",
+    "opp_rush_yards_game": "86.7",
+    "pass_yards_game": "199.4",
+    "opp_pass_yards_game": "236.9"
+  },
+  "KC": {
+    "rush_yards_game": "115.3",
+    "opp_rush_yards_game": "100.0",
+    "pass_yards_game": "248.9",
+    "opp_pass_yards_game": "196.8",
+    "completions_game": "22.6",
+    "opp_completions_game": "17.1"
+  },
+  "LV": {
+    "rush_yards_game": "81.4",
+    "opp_rush_yards_game": "107.3",
+    "pass_yards_game": "187.6",
+    "opp_pass_yards_game": "219.5"
+  },
+  "LAC": {
+    "rush_yards_game": "115.7",
+    "opp_rush_yards_game": "113.8",
+    "pass_yards_game": "231.5",
+    "opp_pass_yards_game": "172.3"
+  },
+  "LAR": {
+    "rush_yards_game": "114.0",
+    "opp_rush_yards_game": "100.7",
+    "pass_yards_game": "246.9",
+    "opp_pass_yards_game": "222.3"
+  },
+  "MIA": {
+    "rush_yards_game": "112.8",
+    "opp_rush_yards_game": "142.6",
+    "pass_yards_game": "187.5",
+    "opp_pass_yards_game": "207.2"
+  },
+  "MIN": {
+    "rush_yards_game": "103.4",
+    "opp_rush_yards_game": "127.0",
+    "pass_yards_game": "193.0",
+    "opp_pass_yards_game": "190.5"
+  },
+  "NE": {
+    "rush_yards_game": "112.9",
+    "opp_rush_yards_game": "84.7",
+    "pass_yards_game": "244.1",
+    "opp_pass_yards_game": "215.9"
+  },
+  "NO": {
+    "rush_yards_game": "92.8",
+    "opp_rush_yards_game": "123.8",
+    "pass_yards_game": "204.4",
+    "opp_pass_yards_game": "193.7"
+  },
+  "NYG": {
+    "rush_yards_game": "124.7",
+    "opp_rush_yards_game": "149.9",
+    "pass_yards_game": "208.5",
+    "opp_pass_yards_game": "225.2"
+  },
+  "NYJ": {
+    "rush_yards_game": "141.6",
+    "opp_rush_yards_game": "130.9",
+    "pass_yards_game": "139.9",
+    "opp_pass_yards_game": "198.8"
+  },
+  "PHI": {
+    "rush_yards_game": "115.2",
+    "opp_rush_yards_game": "114.1",
+    "pass_yards_game": "184.9",
+    "opp_pass_yards_game": "212.7",
+    "completions_game": "16.0",
+    "opp_completions_game": "20.1"
+  },
+  "PIT": {
+    "rush_yards_game": "88.2",
+    "opp_rush_yards_game": "106.4",
+    "pass_yards_game": "198.7",
+    "opp_pass_yards_game": "261.7"
+  },
+  "SF": {
+    "rush_yards_game": "94.8",
+    "opp_rush_yards_game": "103.8",
+    "pass_yards_game": "254.5",
+    "opp_pass_yards_game": "249.1",
+    "completions_game": "22.1",
+    "opp_completions_game": "21.3"
+  },
+  "SEA": {
+    "rush_yards_game": "116.4",
+    "opp_rush_yards_game": "93.5",
+    "pass_yards_game": "249.4",
+    "opp_pass_yards_game": "208.0"
+  },
+  "TB": {
+    "rush_yards_game": "110.0",
+    "opp_rush_yards_game": "100.4",
+    "pass_yards_game": "222.2",
+    "opp_pass_yards_game": "241.6"
+  },
+  "TEN": {
+    "rush_yards_game": "78.9",
+    "opp_rush_yards_game": "134.7",
+    "pass_yards_game": "163.6",
+    "opp_pass_yards_game": "217.8"
+  },
+  "WAS": {
+    "rush_yards_game": "138.5",
+    "opp_rush_yards_game": "137.5",
+    "pass_yards_game": "191.6",
+    "opp_pass_yards_game": "249.5"
+  }
+}
