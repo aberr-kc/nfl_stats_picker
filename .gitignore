@@ -5,3 +5,4 @@ __pycache__/
 backup_*/
 *.zip
 .DS_Store
+node_modules/

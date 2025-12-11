@@ -21,4 +21,4 @@ if buf_stats.get('opp_completions_game'):
         adjusted_receptions = round(original_receptions * multiplier, 1)
         print(f"Dalton Schultz: {original_receptions} -> {adjusted_receptions} receptions")
 else:
-    print("BUF has no completions data - need to add it")
+    print("BUF has no completions data - need to add it.")
