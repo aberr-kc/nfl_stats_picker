@@ -8,14 +8,19 @@ from fetch_stats import fetch_weekly_stats_sleeper as fetch_weekly_stats
 
 
 # --- Pandas direct save for stats ---
-def save_stats_to_db(year: int, week: int):
+def save_stats_to_db(year: int, week: int, season_type: str = 'regular'):
     """
     Fetch weekly stats from Sleeper API and save to SQLite DB.
-    Automatically deletes existing rows for that season/week before inserting.
+    Automatically deletes existing rows for that season/week/season_type before inserting.
+    
+    Args:
+        year: Season year
+        week: Week number
+        season_type: 'regular' or 'playoffs'
     """
-    df = fetch_weekly_stats(year, week)
+    df = fetch_weekly_stats(year, week, season_type)
     if df.empty:
-        print(f"⚠️ No stats fetched for Week {week}, {year}")
+        print(f"⚠️ No {season_type} stats fetched for Week {week}, {year}")
         return
 
     conn = None
@@ -23,10 +28,17 @@ def save_stats_to_db(year: int, week: int):
         conn = sqlite3.connect("nfl_stats.db")
         cursor = conn.cursor()
 
-        # Delete existing rows for this season/week to avoid duplicates
+        # Add season_type column if it doesn't exist
+        try:
+            cursor.execute("ALTER TABLE player_weekly_stats ADD COLUMN season_type TEXT DEFAULT 'regular'")
+            conn.commit()
+        except sqlite3.OperationalError:
+            pass  # Column already exists
+
+        # Delete existing rows for this season/week/season_type to avoid duplicates
         cursor.execute(
-            "DELETE FROM player_weekly_stats WHERE season = ? AND week = ?",
-            (year, week)
+            "DELETE FROM player_weekly_stats WHERE season = ? AND week = ? AND season_type = ?",
+            (year, week, season_type)
         )
         conn.commit()
 
@@ -35,13 +47,13 @@ def save_stats_to_db(year: int, week: int):
 
         # Count inserted rows
         cursor.execute(
-            "SELECT COUNT(*) FROM player_weekly_stats WHERE season = ? AND week = ?",
-            (year, week)
+            "SELECT COUNT(*) FROM player_weekly_stats WHERE season = ? AND week = ? AND season_type = ?",
+            (year, week, season_type)
         )
         row_count = cursor.fetchone()[0]
-        print(f"✅ Saved {row_count} rows to player_weekly_stats for Week {week}, {year}")
+        print(f"✅ Saved {row_count} rows to player_weekly_stats for {season_type} Week {week}, {year}")
     except Exception as e:
-        print(f"❌ Error saving stats to DB: {e}")
+        print(f"❌ Error saving {season_type} stats to DB: {e}")
         if conn:
             conn.rollback()
         raise

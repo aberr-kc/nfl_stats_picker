@@ -34,16 +34,24 @@ def fetch_players_df():
     return df
 
 
-def fetch_weekly_stats_sleeper(year: int, week: int, players_df=None) -> pd.DataFrame:
+def fetch_weekly_stats_sleeper(year: int, week: int, season_type: str = 'regular', players_df=None) -> pd.DataFrame:
     """
     Fetch weekly stats for all players from Sleeper API and merge with player metadata.
-    Returns a DataFrame with cleaned + renamed stat columns.
+    
+    Args:
+        year: Season year
+        week: Week number (1-18 for regular, 1-4 for playoffs)
+        season_type: 'regular' or 'playoffs'
+        players_df: Optional pre-fetched players DataFrame
+    
+    Returns:
+        DataFrame with cleaned + renamed stat columns.
     """
     if players_df is None:
         players_df = fetch_players_df()
 
-    url = f"https://api.sleeper.app/v1/stats/nfl/regular/{year}/{week}"
-    print(f"Fetching NFL weekly stats for {year} Week {week} from {url}...")
+    url = f"https://api.sleeper.app/v1/stats/nfl/{season_type}/{year}/{week}"
+    print(f"Fetching NFL {season_type} stats for {year} Week {week} from {url}...")
     try:
         # amazonq-ignore-next-line
         resp = requests.get(url, timeout=30, verify=False)
@@ -54,7 +62,7 @@ def fetch_weekly_stats_sleeper(year: int, week: int, players_df=None) -> pd.Data
 
     data = resp.json()
     if not data:
-        print("No stats returned.")
+        print(f"No {season_type} stats returned for week {week}.")
         return pd.DataFrame()
 
     # Convert JSON dict (player_id -> stats) to DataFrame
@@ -62,6 +70,7 @@ def fetch_weekly_stats_sleeper(year: int, week: int, players_df=None) -> pd.Data
     stats_df["player_id"] = list(data.keys())
     stats_df["season"] = year
     stats_df["week"] = week
+    stats_df["season_type"] = season_type
 
     # --- Map Sleeper stat keys into expected schema ---
     mapping = {
@@ -89,17 +98,22 @@ def fetch_weekly_stats_sleeper(year: int, week: int, players_df=None) -> pd.Data
 
     required_cols = [
         "player_id", "player_name", "player_display_name", "team", "position",
-        "season", "week", "passing_yards", "passing_tds",
+        "season", "week", "season_type", "passing_yards", "passing_tds",
         "rushing_yards", "rushing_tds",
         "receiving_yards", "receiving_tds", "receptions"
     ]
     for col in required_cols:
         if col not in merged_df.columns:
-            merged_df[col] = 0 if col not in ["player_name", "player_display_name", "team", "position"] else ""
+            if col == "season_type":
+                merged_df[col] = season_type
+            elif col not in ["player_name", "player_display_name", "team", "position"]:
+                merged_df[col] = 0
+            else:
+                merged_df[col] = ""
 
     # Fill NaNs with zeros for numeric stats
     numeric_cols = merged_df.select_dtypes(include="number").columns
     merged_df[numeric_cols] = merged_df[numeric_cols].fillna(0)
 
-    print(f"Retrieved {len(merged_df)} player stats rows.")
+    print(f"Retrieved {len(merged_df)} player {season_type} stats rows.")
     return merged_df[required_cols]  # return only cleaned columns

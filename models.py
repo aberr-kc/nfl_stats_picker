@@ -28,6 +28,21 @@ class Odds(Base):
     price = Column(Float)
     season = Column(Integer)
     week = Column(Integer)
+    season_type = Column(String, default='regular')  # 'regular' or 'playoffs'
+    retrieved_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
+
+class Weather(Base):
+    __tablename__ = "weather"
+    
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    event_id = Column(String, nullable=False)
+    temperature = Column(Float)  # Fahrenheit
+    wind_speed = Column(Float)   # mph
+    precipitation = Column(Float)  # inches
+    conditions = Column(String)  # Clear, Rain, Snow, etc.
+    season = Column(Integer)
+    week = Column(Integer)
+    season_type = Column(String, default='regular')  # 'regular' or 'playoffs'
     retrieved_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
 
 # Create tables
