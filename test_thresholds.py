@@ -183,11 +183,24 @@ def get_flagged_players_json_updated():
             # Calculate adjusted stats before flagging
             try:
                 from team_stats import get_team_stats_for_player, get_league_defensive_averages
+                from weather_adjustments import get_weather_adjustments, format_weather_explanation
+                from weather_api import get_weather_for_game
                 
                 if odds and odds[0].get('event_name'):
                     event_name = odds[0]['event_name']
                     if ' vs ' in event_name:
                         teams = event_name.split(' vs ')
+                        team1 = teams[0].strip()
+                        team2 = teams[1].strip()
+                        
+                        # Get weather data
+                        weather_data = get_weather_for_game(team1, team2)
+                        weather_adjustments = get_weather_adjustments(
+                            weather_data['temperature'],
+                            weather_data['wind_speed'], 
+                            weather_data['conditions']
+                        )
+                        
                         with engine.connect() as conn:
                             team_result = conn.execute(text("""
                                 SELECT team FROM player_weekly_stats 
@@ -196,8 +209,6 @@ def get_flagged_players_json_updated():
                             """), {"player": player_display_name}).fetchone()
                             if team_result:
                                 player_team = team_result[0]
-                                team1 = teams[0].strip()
-                                team2 = teams[1].strip()
                                 
                                 abbrev_to_full_name = {
                                     'ARI': 'Arizona Cardinals', 'ATL': 'Atlanta Falcons', 'BAL': 'Baltimore Ravens',
@@ -222,7 +233,9 @@ def get_flagged_players_json_updated():
                                     opponent_team = team1
                                 
                                 if opponent_team:
-                                    team_name_to_abbrev = {
+                                    # Create comprehensive team mappings
+                                    team_mappings = {
+                                        # Full names to abbreviations
                                         'arizona cardinals': 'ARI', 'atlanta falcons': 'ATL', 'baltimore ravens': 'BAL',
                                         'buffalo bills': 'BUF', 'carolina panthers': 'CAR', 'chicago bears': 'CHI',
                                         'cincinnati bengals': 'CIN', 'cleveland browns': 'CLE', 'dallas cowboys': 'DAL',
@@ -233,54 +246,90 @@ def get_flagged_players_json_updated():
                                         'new england patriots': 'NE', 'new orleans saints': 'NO', 'new york giants': 'NYG',
                                         'new york jets': 'NYJ', 'philadelphia eagles': 'PHI', 'pittsburgh steelers': 'PIT',
                                         'san francisco 49ers': 'SF', 'seattle seahawks': 'SEA', 'tampa bay buccaneers': 'TB',
-                                        'tennessee titans': 'TEN', 'washington commanders': 'WAS'
+                                        'tennessee titans': 'TEN', 'washington commanders': 'WAS',
+                                        # Abbreviations to full names
+                                        'ARI': 'Arizona Cardinals', 'ATL': 'Atlanta Falcons', 'BAL': 'Baltimore Ravens',
+                                        'BUF': 'Buffalo Bills', 'CAR': 'Carolina Panthers', 'CHI': 'Chicago Bears',
+                                        'CIN': 'Cincinnati Bengals', 'CLE': 'Cleveland Browns', 'DAL': 'Dallas Cowboys',
+                                        'DEN': 'Denver Broncos', 'DET': 'Detroit Lions', 'GB': 'Green Bay Packers',
+                                        'HOU': 'Houston Texans', 'IND': 'Indianapolis Colts', 'JAX': 'Jacksonville Jaguars',
+                                        'KC': 'Kansas City Chiefs', 'LV': 'Las Vegas Raiders', 'LAC': 'Los Angeles Chargers',
+                                        'LAR': 'Los Angeles Rams', 'MIA': 'Miami Dolphins', 'MIN': 'Minnesota Vikings',
+                                        'NE': 'New England Patriots', 'NO': 'New Orleans Saints', 'NYG': 'New York Giants',
+                                        'NYJ': 'New York Jets', 'PHI': 'Philadelphia Eagles', 'PIT': 'Pittsburgh Steelers',
+                                        'SF': 'San Francisco 49ers', 'SEA': 'Seattle Seahawks', 'TB': 'Tampa Bay Buccaneers',
+                                        'TEN': 'Tennessee Titans', 'WAS': 'Washington Commanders'
                                     }
                                     
-                                    opponent_abbrev = team_name_to_abbrev.get(opponent_team.lower(), None)
+                                    # Find opponent team with better matching logic
+                                    opponent_team = None
+                                    player_team_full = team_mappings.get(player_team, player_team)
+                                    
+                                    # Try multiple matching approaches
+                                    for team_option in [team1, team2]:
+                                        # Check if player team matches this option
+                                        team_matches = (
+                                            player_team.upper() in team_option.upper() or
+                                            team_option.upper() in player_team.upper() or
+                                            (isinstance(player_team_full, str) and player_team_full.lower() in team_option.lower()) or
+                                            (isinstance(player_team_full, str) and team_option.lower() in player_team_full.lower())
+                                        )
+                                        
+                                        if team_matches:
+                                            opponent_team = team2 if team_option == team1 else team1
+                                            break
+                                
+                                if opponent_team:
+                                    # Find opponent abbreviation
+                                    opponent_abbrev = team_mappings.get(opponent_team.lower(), None)
+                                    if not opponent_abbrev:
+                                        # Try partial matching for team names
+                                        for name, abbrev in team_mappings.items():
+                                            if (isinstance(name, str) and len(name) > 3 and 
+                                                name.lower() in opponent_team.lower()):
+                                                opponent_abbrev = abbrev
+                                                break
                                     if opponent_abbrev:
                                         opponent_stats = get_team_stats_for_player(opponent_abbrev)
                                         league_def_avg = get_league_defensive_averages()
                                         
-                                        # Store adjustments in player_stats
-                                        if opponent_stats.get('opp_rush_yards_game') != 'N/A' and league_def_avg.get('opp_rush_yards_game'):
-                                            try:
-                                                opp_rush_def = float(opponent_stats['opp_rush_yards_game'])
-                                                league_rush_def = float(league_def_avg['opp_rush_yards_game'])
-                                                rush_multiplier = opp_rush_def / league_rush_def if league_rush_def > 0 else 1
-                                                original_rush = player_stats["avg"].get("rushing_yards", 0)
-                                                adjusted_rush = round(original_rush * rush_multiplier, 1)
-                                                player_stats["avg"]["adjusted_rushing_yards"] = adjusted_rush
-                                                player_stats["avg"]["rush_adjustment_pct"] = round((rush_multiplier - 1) * 100, 1)
-                                            except:
-                                                pass
-                                        
-                                        if opponent_stats.get('opp_pass_yards_game') != 'N/A' and league_def_avg.get('opp_pass_yards_game'):
-                                            try:
-                                                opp_pass_def = float(opponent_stats['opp_pass_yards_game'])
-                                                league_pass_def = float(league_def_avg['opp_pass_yards_game'])
-                                                pass_multiplier = opp_pass_def / league_pass_def if league_pass_def > 0 else 1
+                                        # Apply combined adjustments to player stats
+                                        for stat_name in ['rushing_yards', 'passing_yards', 'receiving_yards', 'receptions']:
+                                            if stat_name in player_stats["avg"]:
+                                                original_value = player_stats["avg"][stat_name]
                                                 
-                                                original_pass = player_stats["avg"].get("passing_yards", 0)
-                                                original_rec = player_stats["avg"].get("receiving_yards", 0)
+                                                # Weather adjustment
+                                                weather_factor = weather_adjustments.get(stat_name, 1.0)
                                                 
-                                                player_stats["avg"]["adjusted_passing_yards"] = round(original_pass * pass_multiplier, 1)
-                                                player_stats["avg"]["adjusted_receiving_yards"] = round(original_rec * pass_multiplier, 1)
-                                                player_stats["avg"]["pass_adjustment_pct"] = round((pass_multiplier - 1) * 100, 1)
-                                            except:
-                                                pass
-                                        
-                                        # Adjust receptions based on opponent completions allowed
-                                        if opponent_stats.get('opp_completions_game') and league_def_avg.get('opp_completions_game'):
-                                            try:
-                                                opp_completions_def = float(opponent_stats['opp_completions_game'])
-                                                league_completions_def = float(league_def_avg['opp_completions_game'])
-                                                completions_multiplier = opp_completions_def / league_completions_def if league_completions_def > 0 else 1
+                                                # Team matchup adjustment
+                                                team_factor = 1.0
+                                                if stat_name in ['rushing_yards'] and opponent_stats.get('opp_rush_yards_game') != 'N/A':
+                                                    try:
+                                                        opp_def = float(opponent_stats['opp_rush_yards_game'])
+                                                        league_def = float(league_def_avg.get('opp_rush_yards_game', 115.4))
+                                                        team_factor = opp_def / league_def if league_def > 0 else 1
+                                                    except:
+                                                        pass
+                                                elif stat_name in ['passing_yards', 'receiving_yards', 'receptions'] and opponent_stats.get('opp_pass_yards_game') != 'N/A':
+                                                    try:
+                                                        opp_def = float(opponent_stats['opp_pass_yards_game'])
+                                                        league_def = float(league_def_avg.get('opp_pass_yards_game', 213.4))
+                                                        team_factor = opp_def / league_def if league_def > 0 else 1
+                                                    except:
+                                                        pass
                                                 
-                                                original_receptions = player_stats["avg"].get("receptions", 0)
-                                                player_stats["avg"]["adjusted_receptions"] = round(original_receptions * completions_multiplier, 1)
-                                                player_stats["avg"]["receptions_adjustment_pct"] = round((completions_multiplier - 1) * 100, 1)
-                                            except:
-                                                pass
+                                                # Combined adjustment
+                                                combined_factor = weather_factor * team_factor
+                                                adjusted_value = round(original_value * combined_factor, 1)
+                                                
+                                                # Store adjustments
+                                                player_stats["avg"][f"adjusted_{stat_name}"] = adjusted_value
+                                                player_stats["avg"][f"{stat_name}_weather_factor"] = weather_factor
+                                                player_stats["avg"][f"{stat_name}_team_factor"] = team_factor
+                                                player_stats["avg"][f"{stat_name}_weather_explanation"] = format_weather_explanation(
+                                                    weather_data['temperature'], weather_data['wind_speed'], weather_data['conditions']
+                                                )
+                                                player_stats["avg"][f"{stat_name}_team_explanation"] = f"vs {opponent_abbrev} defense ({opponent_stats.get('opp_pass_yards_game' if stat_name in ['passing_yards', 'receiving_yards', 'receptions'] else 'opp_rush_yards_game', 'N/A')} vs {league_def_avg.get('opp_pass_yards_game' if stat_name in ['passing_yards', 'receiving_yards', 'receptions'] else 'opp_rush_yards_game', 'N/A')} league avg)"
             except:
                 pass
             
@@ -346,21 +395,49 @@ def get_flagged_players_json_updated():
                                             league_def_avg = get_league_defensive_averages()
                                             
                                             for f in flagged:
-                                                if f['stat'] == 'receptions':
+                                                stat_name = f['stat']
+                                                
+                                                # Get weather and team adjustments
+                                                weather_factor = weather_adjustments.get(stat_name, 1.0)
+                                                team_factor = 1.0
+                                                
+                                                if stat_name == 'rushing_yards' and opponent_stats.get('opp_rush_yards_game') != 'N/A' and league_def_avg.get('opp_rush_yards_game'):
                                                     try:
-                                                        opp_pass_def = float(opponent_stats.get('opp_pass_yards_game', 0))
-                                                        league_pass_def = float(league_def_avg.get('opp_pass_yards_game', 1))
-                                                        if opp_pass_def > 0 and league_pass_def > 0:
-                                                            pass_multiplier = opp_pass_def / league_pass_def
-                                                            original_value = float(player_stats["avg"].get("receptions", 0))
-                                                            adjusted_value = round(original_value * pass_multiplier, 1)
+                                                        opp_rush_def = float(opponent_stats['opp_rush_yards_game'])
+                                                        league_rush_def = float(league_def_avg['opp_rush_yards_game'])
+                                                        team_factor = opp_rush_def / league_rush_def if league_rush_def > 0 else 1
+                                                        adjusted_value = round(player_stats["avg"].get("rushing_yards", 0) * weather_factor * team_factor, 1)
+                                                        f['adjustedRushingYards'] = adjusted_value
+                                                        f['adjustmentDetails'] = {
+                                                            'original': player_stats["avg"].get("rushing_yards", 0),
+                                                            'adjusted': adjusted_value,
+                                                            'changePct': round((weather_factor * team_factor - 1) * 100, 1),
+                                                            'explanation': f'<strong>Weather {round((weather_factor - 1) * 100, 1):+.1f}%</strong><br>&nbsp;&nbsp;&nbsp;&nbsp;{format_weather_explanation(weather_data["temperature"], weather_data["wind_speed"], weather_data["conditions"])}<br><strong>Matchup {round((team_factor - 1) * 100, 1):+.1f}%</strong><br>&nbsp;&nbsp;&nbsp;&nbsp;vs {opponent_abbrev} defense ({opp_rush_def} vs {league_rush_def} league avg)'
+                                                        }
+                                                    except:
+                                                        pass
+                                                elif stat_name in ['passing_yards', 'receiving_yards', 'receptions'] and opponent_stats.get('opp_pass_yards_game') != 'N/A' and league_def_avg.get('opp_pass_yards_game'):
+                                                    try:
+                                                        opp_pass_def = float(opponent_stats['opp_pass_yards_game'])
+                                                        league_pass_def = float(league_def_avg['opp_pass_yards_game'])
+                                                        team_factor = opp_pass_def / league_pass_def if league_pass_def > 0 else 1
+                                                        
+                                                        original_value = float(player_stats["avg"].get(stat_name, 0))
+                                                        adjusted_value = round(original_value * weather_factor * team_factor, 1)
+                                                        
+                                                        if stat_name == 'passing_yards':
+                                                            f['adjustedPassingYards'] = adjusted_value
+                                                        elif stat_name == 'receiving_yards':
+                                                            f['adjustedReceivingYards'] = adjusted_value
+                                                        elif stat_name == 'receptions':
                                                             f['adjustedReceptions'] = adjusted_value
-                                                            f['adjustmentDetails'] = {
-                                                                'original': original_value,
-                                                                'adjusted': adjusted_value,
-                                                                'changePct': round((pass_multiplier - 1) * 100, 1),
-                                                                'explanation': f'vs {opponent_abbrev} pass defense ({opp_pass_def} vs {league_pass_def} league avg)'
-                                                            }
+                                                            
+                                                        f['adjustmentDetails'] = {
+                                                            'original': original_value,
+                                                            'adjusted': adjusted_value,
+                                                            'changePct': round((weather_factor * team_factor - 1) * 100, 1),
+                                                            'explanation': f'<strong>Weather {round((weather_factor - 1) * 100, 1):+.1f}%</strong><br>&nbsp;&nbsp;&nbsp;&nbsp;{format_weather_explanation(weather_data["temperature"], weather_data["wind_speed"], weather_data["conditions"])}<br><strong>Matchup {round((team_factor - 1) * 100, 1):+.1f}%</strong><br>&nbsp;&nbsp;&nbsp;&nbsp;vs {opponent_abbrev} defense ({opp_pass_def} vs {league_pass_def} league avg)'
+                                                        }
                                                     except Exception as e:
                                                         pass
                 except Exception as e:
@@ -449,12 +526,28 @@ if __name__ == "__main__":
                 # Calculate adjusted stats
                 try:
                     from team_stats import get_team_stats_for_player, get_league_defensive_averages
+                    from weather_adjustments import get_weather_adjustments, format_weather_explanation
+                    from weather_api import get_weather_for_game
                     
                     opponent_team = None
+                    weather_data = None
+                    weather_adjustments_dict = {}
+                    
                     if odds and odds[0].get('event_name'):
                         event_name = odds[0]['event_name']
                         if ' vs ' in event_name:
                             teams = event_name.split(' vs ')
+                            team1 = teams[0].strip()
+                            team2 = teams[1].strip()
+                            
+                            # Get weather data
+                            weather_data = get_weather_for_game(team1, team2)
+                            weather_adjustments_dict = get_weather_adjustments(
+                                weather_data['temperature'],
+                                weather_data['wind_speed'], 
+                                weather_data['conditions']
+                            )
+                            
                             with engine.connect() as conn:
                                 team_result = conn.execute(text("""
                                     SELECT team FROM player_weekly_stats 
@@ -463,11 +556,22 @@ if __name__ == "__main__":
                                 """), {"player": player_display_name}).fetchone()
                                 if team_result:
                                     player_team = team_result[0]
-                                    team1 = teams[0].strip()
-                                    team2 = teams[1].strip()
                                     
-                                    # Map player team abbreviation to full name
-                                    abbrev_to_full_name = {
+                                    # Create comprehensive team mappings
+                                    team_mappings = {
+                                        # Full names to abbreviations
+                                        'arizona cardinals': 'ARI', 'atlanta falcons': 'ATL', 'baltimore ravens': 'BAL',
+                                        'buffalo bills': 'BUF', 'carolina panthers': 'CAR', 'chicago bears': 'CHI',
+                                        'cincinnati bengals': 'CIN', 'cleveland browns': 'CLE', 'dallas cowboys': 'DAL',
+                                        'denver broncos': 'DEN', 'detroit lions': 'DET', 'green bay packers': 'GB',
+                                        'houston texans': 'HOU', 'indianapolis colts': 'IND', 'jacksonville jaguars': 'JAX',
+                                        'kansas city chiefs': 'KC', 'las vegas raiders': 'LV', 'los angeles chargers': 'LAC',
+                                        'los angeles rams': 'LAR', 'miami dolphins': 'MIA', 'minnesota vikings': 'MIN',
+                                        'new england patriots': 'NE', 'new orleans saints': 'NO', 'new york giants': 'NYG',
+                                        'new york jets': 'NYJ', 'philadelphia eagles': 'PHI', 'pittsburgh steelers': 'PIT',
+                                        'san francisco 49ers': 'SF', 'seattle seahawks': 'SEA', 'tampa bay buccaneers': 'TB',
+                                        'tennessee titans': 'TEN', 'washington commanders': 'WAS',
+                                        # Abbreviations to full names
                                         'ARI': 'Arizona Cardinals', 'ATL': 'Atlanta Falcons', 'BAL': 'Baltimore Ravens',
                                         'BUF': 'Buffalo Bills', 'CAR': 'Carolina Panthers', 'CHI': 'Chicago Bears',
                                         'CIN': 'Cincinnati Bengals', 'CLE': 'Cleveland Browns', 'DAL': 'Dallas Cowboys',
@@ -481,107 +585,85 @@ if __name__ == "__main__":
                                         'TEN': 'Tennessee Titans', 'WAS': 'Washington Commanders'
                                     }
                                     
-                                    player_team_full = abbrev_to_full_name.get(player_team, player_team)
+                                    # Find opponent team with better matching logic
+                                    player_team_full = team_mappings.get(player_team, player_team)
                                     
-                                    if player_team_full in team1 or player_team in team1:
-                                        opponent_team = team2
-                                    elif player_team_full in team2 or player_team in team2:
-                                        opponent_team = team1
+                                    # Try multiple matching approaches
+                                    for team_option in [team1, team2]:
+                                        # Check if player team matches this option
+                                        team_matches = (
+                                            player_team.upper() in team_option.upper() or
+                                            team_option.upper() in player_team.upper() or
+                                            (isinstance(player_team_full, str) and player_team_full.lower() in team_option.lower()) or
+                                            (isinstance(player_team_full, str) and team_option.lower() in player_team_full.lower())
+                                        )
+                                        
+                                        if team_matches:
+                                            opponent_team = team2 if team_option == team1 else team1
+                                            break
                     
                     if opponent_team:
-                        team_name_to_abbrev = {
-                            'arizona cardinals': 'ARI', 'atlanta falcons': 'ATL', 'baltimore ravens': 'BAL',
-                            'buffalo bills': 'BUF', 'carolina panthers': 'CAR', 'chicago bears': 'CHI',
-                            'cincinnati bengals': 'CIN', 'cleveland browns': 'CLE', 'dallas cowboys': 'DAL',
-                            'denver broncos': 'DEN', 'detroit lions': 'DET', 'green bay packers': 'GB',
-                            'houston texans': 'HOU', 'indianapolis colts': 'IND', 'jacksonville jaguars': 'JAX',
-                            'kansas city chiefs': 'KC', 'las vegas raiders': 'LV', 'los angeles chargers': 'LAC',
-                            'los angeles rams': 'LAR', 'miami dolphins': 'MIA', 'minnesota vikings': 'MIN',
-                            'new england patriots': 'NE', 'new orleans saints': 'NO', 'new york giants': 'NYG',
-                            'new york jets': 'NYJ', 'philadelphia eagles': 'PHI', 'pittsburgh steelers': 'PIT',
-                            'san francisco 49ers': 'SF', 'seattle seahawks': 'SEA', 'tampa bay buccaneers': 'TB',
-                            'tennessee titans': 'TEN', 'washington commanders': 'WAS'
-                        }
-                        
-                        opponent_abbrev = team_name_to_abbrev.get(opponent_team.lower(), None)
+                        # Find opponent abbreviation
+                        opponent_abbrev = team_mappings.get(opponent_team.lower(), None)
+                        if not opponent_abbrev:
+                            # Try partial matching for team names
+                            for name, abbrev in team_mappings.items():
+                                if (isinstance(name, str) and len(name) > 3 and 
+                                    name.lower() in opponent_team.lower()):
+                                    opponent_abbrev = abbrev
+                                    break
                         if opponent_abbrev:
                             opponent_stats = get_team_stats_for_player(opponent_abbrev)
                             league_def_avg = get_league_defensive_averages()
                             
                             for f in flagged:
-                                if f['stat'] == 'rushing_yards' and opponent_stats.get('opp_rush_yards_game') != 'N/A' and league_def_avg.get('opp_rush_yards_game'):
+                                stat_name = f['stat']
+                                
+                                # Get weather and team adjustments
+                                weather_factor = weather_adjustments_dict.get(stat_name, 1.0)
+                                team_factor = 1.0
+                                
+                                if stat_name == 'rushing_yards' and opponent_stats.get('opp_rush_yards_game') != 'N/A' and league_def_avg.get('opp_rush_yards_game'):
                                     try:
                                         opp_rush_def = float(opponent_stats['opp_rush_yards_game'])
                                         league_rush_def = float(league_def_avg['opp_rush_yards_game'])
-                                        rush_multiplier = opp_rush_def / league_rush_def if league_rush_def > 0 else 1
-                                        adjusted_value = round(player_stats["avg"].get("rushing_yards", 0) * rush_multiplier, 1)
+                                        team_factor = opp_rush_def / league_rush_def if league_rush_def > 0 else 1
+                                        
+                                        original_value = float(player_stats["avg"].get("rushing_yards", 0))
+                                        adjusted_value = round(original_value * weather_factor * team_factor, 1)
                                         f['adjustedRushingYards'] = adjusted_value
                                         f['adjustmentDetails'] = {
-                                            'original': player_stats["avg"].get("rushing_yards", 0),
+                                            'original': original_value,
                                             'adjusted': adjusted_value,
-                                            'changePct': round((rush_multiplier - 1) * 100, 1),
-                                            'explanation': f'vs {opponent_abbrev} rush defense ({opp_rush_def} vs {league_rush_def} league avg)'
+                                            'changePct': round((weather_factor * team_factor - 1) * 100, 1),
+                                            'explanation': f'Weather {round((weather_factor - 1) * 100, 1):+.1f}%\nWeather: {format_weather_explanation(weather_data["temperature"], weather_data["wind_speed"], weather_data["conditions"])}\nMatchup {round((team_factor - 1) * 100, 1):+.1f}%\nvs {opponent_abbrev} defense ({opp_rush_def} vs {league_rush_def} league avg)'
                                         }
                                     except:
                                         pass
-                                elif f['stat'] == 'passing_yards' and opponent_stats.get('opp_pass_yards_game') != 'N/A' and league_def_avg.get('opp_pass_yards_game'):
+                                elif stat_name in ['passing_yards', 'receiving_yards', 'receptions'] and opponent_stats.get('opp_pass_yards_game') != 'N/A' and league_def_avg.get('opp_pass_yards_game'):
                                     try:
                                         opp_pass_def = float(opponent_stats['opp_pass_yards_game'])
                                         league_pass_def = float(league_def_avg['opp_pass_yards_game'])
-                                        pass_multiplier = opp_pass_def / league_pass_def if league_pass_def > 0 else 1
-                                        adjusted_value = round(player_stats["avg"].get("passing_yards", 0) * pass_multiplier, 1)
-                                        f['adjustedPassingYards'] = adjusted_value
-                                        f['adjustmentDetails'] = {
-                                            'original': player_stats["avg"].get("passing_yards", 0),
-                                            'adjusted': adjusted_value,
-                                            'changePct': round((pass_multiplier - 1) * 100, 1),
-                                            'explanation': f'vs {opponent_abbrev} pass defense ({opp_pass_def} vs {league_pass_def} league avg)'
-                                        }
-                                    except:
-                                        pass
-                                elif f['stat'] == 'receiving_yards' and opponent_stats.get('opp_pass_yards_game') != 'N/A' and league_def_avg.get('opp_pass_yards_game'):
-                                    try:
-                                        opp_pass_def = float(opponent_stats['opp_pass_yards_game'])
-                                        league_pass_def = float(league_def_avg['opp_pass_yards_game'])
-                                        pass_multiplier = opp_pass_def / league_pass_def if league_pass_def > 0 else 1
-                                        adjusted_value = round(player_stats["avg"].get("receiving_yards", 0) * pass_multiplier, 1)
-                                        f['adjustedReceivingYards'] = adjusted_value
-                                        f['adjustmentDetails'] = {
-                                            'original': player_stats["avg"].get("receiving_yards", 0),
-                                            'adjusted': adjusted_value,
-                                            'changePct': round((pass_multiplier - 1) * 100, 1),
-                                            'explanation': f'vs {opponent_abbrev} pass defense ({opp_pass_def} vs {league_pass_def} league avg)'
-                                        }
-                                    except:
-                                        pass
-                                elif f['stat'] == 'receptions':
-                                    print(f"DEBUG: Processing receptions adjustment for {player_display_name}")
-                                    print(f"DEBUG: opponent_stats = {opponent_stats}")
-                                    print(f"DEBUG: league_def_avg = {league_def_avg}")
-                                    try:
-                                        # Use pass defense as proxy for receptions allowed
-                                        opp_pass_def = float(opponent_stats.get('opp_pass_yards_game', 0))
-                                        league_pass_def = float(league_def_avg.get('opp_pass_yards_game', 1))
-                                        print(f"DEBUG: opp_pass_def = {opp_pass_def}, league_pass_def = {league_pass_def}")
-                                        if opp_pass_def > 0 and league_pass_def > 0:
-                                            pass_multiplier = opp_pass_def / league_pass_def
-                                            original_value = float(player_stats["avg"].get("receptions", 0))
-                                            adjusted_value = round(original_value * pass_multiplier, 1)
-                                            print(f"DEBUG: Setting adjustedReceptions = {adjusted_value} for {player_display_name}")
+                                        team_factor = opp_pass_def / league_pass_def if league_pass_def > 0 else 1
+                                        
+                                        original_value = float(player_stats["avg"].get(stat_name, 0))
+                                        adjusted_value = round(original_value * weather_factor * team_factor, 1)
+                                        
+                                        if stat_name == 'passing_yards':
+                                            f['adjustedPassingYards'] = adjusted_value
+                                        elif stat_name == 'receiving_yards':
+                                            f['adjustedReceivingYards'] = adjusted_value
+                                        elif stat_name == 'receptions':
                                             f['adjustedReceptions'] = adjusted_value
-                                            f['adjustmentDetails'] = {
-                                                'original': original_value,
-                                                'adjusted': adjusted_value,
-                                                'changePct': round((pass_multiplier - 1) * 100, 1),
-                                                'explanation': f'vs {opponent_abbrev} pass defense ({opp_pass_def} vs {league_pass_def} league avg)'
-                                            }
-                                            print(f"DEBUG: Final f object = {f}")
-                                        else:
-                                            print(f"DEBUG: Skipping adjustment - invalid defense values")
-                                    except Exception as e:
-                                        print(f"DEBUG: Receptions adjustment error for {player_display_name}: {e}")
-                                        import traceback
-                                        traceback.print_exc()
+                                            
+                                        f['adjustmentDetails'] = {
+                                            'original': original_value,
+                                            'adjusted': adjusted_value,
+                                            'changePct': round((weather_factor * team_factor - 1) * 100, 1),
+                                            'explanation': f'<strong>Weather {round((weather_factor - 1) * 100, 1):+.1f}%</strong><br>&nbsp;&nbsp;&nbsp;&nbsp;{format_weather_explanation(weather_data["temperature"], weather_data["wind_speed"], weather_data["conditions"])}<br><strong>Matchup {round((team_factor - 1) * 100, 1):+.1f}%</strong><br>&nbsp;&nbsp;&nbsp;&nbsp;vs {opponent_abbrev} defense ({opp_pass_def} vs {league_pass_def} league avg)'
+                                        }
+                                    except:
+                                        pass
                 except:
                     pass
 

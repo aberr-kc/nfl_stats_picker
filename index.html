@@ -163,6 +163,12 @@
             letter-spacing: 0.5px;
         }
         
+        /* Ensure strong tags in adjustment details are bold */
+        td strong {
+            font-weight: bold !important;
+            color: #ffcc02 !important;
+        }
+        
 
     </style>
 
@@ -921,7 +927,7 @@
                 const gameScriptText = adj.gameScript ? ' (GS)' : '';
                 const explanation = adj.explanation || 'Adjustment applied';
                 adjustmentDisplay = `
-                    <div style="color: ${changeColor}; font-size: 10px; font-weight: bold;">
+                    <div style="color: ${changeColor}; font-size: 12px; font-weight: bold;">
                         ${changeIcon}${Math.abs(adj.changePct)}%${gameScriptText}
                     </div>
                     <div style="color: #ccc; font-size: 9px; font-style: italic; margin-top: 2px; line-height: 1.2;">

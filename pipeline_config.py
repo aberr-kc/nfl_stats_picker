@@ -2,17 +2,19 @@
 
 # Season and week configuration
 SEASON = 2025
-CURRENT_WEEK = 15
+CURRENT_WEEK = 18
 
-# Odds configuration
-ODDS_WEEK = 15
-ODDS_DAYS_AHEAD = 4
+# Odds configuration - use current week
+ODDS_WEEK = 18
+ODDS_DAYS_AHEAD = 2
 
-# Stats configuration  
-STATS_WEEK = 14
 
-# Comparison configuration
-COMPARISON_WEEK = 15
+
+# Stats configuration  - use previous week
+STATS_WEEK = 17
+
+# Comparison configuration - use current week
+COMPARISON_WEEK = 18
 
 # Known players with incomplete data (to skip in analysis)
 INCOMPLETE_DATA_PLAYERS = [
