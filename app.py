@@ -1,6 +1,7 @@
 from fastapi import FastAPI, HTTPException
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse
+from pathlib import Path
 from sqlalchemy import create_engine, text
 from sqlalchemy.exc import SQLAlchemyError
 import pandas as pd
@@ -11,6 +12,7 @@ import logging
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
+BASE_DIR = Path(__file__).resolve().parent
 
 app = FastAPI()
 
@@ -39,7 +41,7 @@ except Exception as e:
 
 @app.get("/")
 def read_root():
-    return FileResponse('index.html')
+    return FileResponse(BASE_DIR / "index.html")
 
 @app.get("/debug/tables")
 def debug_tables():
@@ -89,9 +91,9 @@ def debug_odds(player_name: str):
     except Exception as e:
         return {"error": str(e)}
 
-# Mount static files
-# amazonq-ignore-next-line
-app.mount("/static", StaticFiles(directory="."), name="static")
+# Mount static files: only the dedicated static/ folder (never the project root,
+# which holds the DB, .env and source)
+app.mount("/static", StaticFiles(directory=BASE_DIR / "static"), name="static")
 
 @app.get("/players")
 @app.get("/players/")
