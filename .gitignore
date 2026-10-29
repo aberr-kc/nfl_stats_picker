@@ -2,6 +2,7 @@
 __pycache__/
 *.pyc
 .env
+.venv/
 backup_*/
 *.zip
 .DS_Store
