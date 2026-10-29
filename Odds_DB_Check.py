@@ -24,7 +24,7 @@ for odds in odds_entries:
         events_dict[event_key][market_key] = []
 
     events_dict[event_key][market_key].append({
-        "player": odds.player.name,
+        "player": odds.player_id,
         "line": odds.line,
         "price": odds.price
     })
