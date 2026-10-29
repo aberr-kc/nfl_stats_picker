@@ -8,6 +8,11 @@ def get_weather_adjustments(temperature, wind_speed, conditions):
         'receptions': 1.0
     }
     
+    # No weather data (weather_api has no real source yet): stay neutral
+    # instead of guessing, so no game gets a weather adjustment.
+    if temperature is None or wind_speed is None or conditions is None:
+        return adjustments
+    
     # Temperature adjustments
     if temperature < 0:  # Very cold
         adjustments['passing_yards'] *= 0.92  # -8%
@@ -41,6 +46,9 @@ def get_weather_adjustments(temperature, wind_speed, conditions):
 
 def format_weather_explanation(temperature, wind_speed, conditions):
     """Format weather explanation text"""
+    if temperature is None or wind_speed is None or conditions is None:
+        return "No weather data (adjustment disabled)"
+    
     explanations = []
     
     if temperature < 0:
