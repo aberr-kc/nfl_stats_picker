@@ -1,7 +1,10 @@
 # odds_api.py
 from datetime import datetime, timedelta, timezone
+import os
+from pathlib import Path
 import requests
 import logging
+from dotenv import load_dotenv
 from models import Session, Player, Odds, engine
 from sqlalchemy.orm import sessionmaker, declarative_base
 from sqlalchemy import Column, String, Integer, DateTime
@@ -20,14 +23,12 @@ Base = declarative_base()
 # -------------------------------
 # API key management
 # -------------------------------
-# amazonq-ignore-next-line
-API_KEYS = [
-    "REMOVED_ODDS_API_KEY",  # Key 1
-    "REMOVED_ODDS_API_KEY",   # Key 2
-    "REMOVED_ODDS_API_KEY",
-    "REMOVED_ODDS_API_KEY",
-    "REMOVED_ODDS_API_KEY"
-]
+# Keys come from ODDS_API_KEYS (comma-separated) in .env next to this file
+# or in the environment. See .env.example. Keys are tried in order.
+load_dotenv(Path(__file__).resolve().parent / ".env")
+API_KEYS = [k.strip() for k in os.getenv("ODDS_API_KEYS", "").split(",") if k.strip()]
+if not API_KEYS:
+    logger.warning("No Odds API keys configured. Set ODDS_API_KEYS in .env (see .env.example).")
 
 # -------------------------------
 # New DB table for API usage tracking
@@ -67,6 +68,8 @@ def call_odds_api(url, params, max_retries=2):
     Try API call with key rotation. Tracks usage per key per month.
     Returns response or raises error if all keys fail.
     """
+    if not API_KEYS:
+        raise RuntimeError("No Odds API keys configured. Set ODDS_API_KEYS in .env (see .env.example).")
     session = Session()
     try:
         for i, key in enumerate(API_KEYS):
