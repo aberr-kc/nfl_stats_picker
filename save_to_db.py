@@ -137,6 +137,5 @@ def save_odds(player_name, event_id, event_name, bookmaker, market, line, price,
 
 # --- Example usage ---
 if __name__ == "__main__":
-    year = 2025
-    week = 10
-    save_stats_to_db(year, week)
+    from pipeline_config import SEASON, STATS_WEEK
+    save_stats_to_db(SEASON, STATS_WEEK)

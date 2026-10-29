@@ -137,6 +137,7 @@ def get_flagged_players_json_updated():
     COMPARISON_WEEK = config['COMPARISON_WEEK']
     THRESHOLDS = config['THRESHOLDS']
     INCOMPLETE_DATA_PLAYERS = config['INCOMPLETE_DATA_PLAYERS']
+    print(f"Generating picks for Season={SEASON}, Week={COMPARISON_WEEK} (config source: {config.get('CONFIG_SOURCE', 'unknown')})")
     
     flagged_players = []
     

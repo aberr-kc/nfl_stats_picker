@@ -1,4 +1,5 @@
 from sqlalchemy import create_engine, text
+from pipeline_config import SEASON, COMPARISON_WEEK
 
 engine = create_engine("sqlite:///nfl_stats.db")
 
@@ -18,22 +19,22 @@ with engine.connect() as conn:
     else:
         print("  No George Pickens found")
 
-print("\n=== Checking odds table for week 14 ===")
+print(f"\n=== Checking odds table for week {COMPARISON_WEEK} ===")
 with engine.connect() as conn:
     result = conn.execute(text("""
         SELECT DISTINCT player_id, event_name, week, season 
         FROM odds 
-        WHERE week = 14 AND season = 2025
+        WHERE week = :week AND season = :season
         ORDER BY player_id 
         LIMIT 10
-    """)).fetchall()
+    """), {"week": COMPARISON_WEEK, "season": SEASON}).fetchall()
     
     if result:
-        print(f"  Found {len(result)} odds entries for week 14:")
+        print(f"  Found {len(result)} odds entries for week {COMPARISON_WEEK}:")
         for row in result:
             print(f"    {row[0]} - {row[1]} (Week {row[2]}, Season {row[3]})")
     else:
-        print("  No odds found for week 14")
+        print(f"  No odds found for week {COMPARISON_WEEK}")
 
 print("\n=== Checking for any George Pickens in odds ===")
 with engine.connect() as conn:
@@ -56,11 +57,11 @@ with engine.connect() as conn:
     result = conn.execute(text("""
         SELECT DISTINCT week, season, COUNT(*) as player_count
         FROM player_weekly_stats 
-        WHERE season = 2025
+        WHERE season = :season
         GROUP BY week, season 
         ORDER BY week DESC 
         LIMIT 5
-    """)).fetchall()
+    """), {"season": SEASON}).fetchall()
     
     for row in result:
         print(f"  Week {row[0]} Season {row[1]}: {row[2]} players")
@@ -70,11 +71,11 @@ with engine.connect() as conn:
     result = conn.execute(text("""
         SELECT DISTINCT week, season, COUNT(DISTINCT player_id) as player_count
         FROM odds 
-        WHERE season = 2025
+        WHERE season = :season
         GROUP BY week, season 
         ORDER BY week DESC 
         LIMIT 5
-    """)).fetchall()
+    """), {"season": SEASON}).fetchall()
     
     for row in result:
         print(f"  Week {row[0]} Season {row[1]}: {row[2]} players with odds")

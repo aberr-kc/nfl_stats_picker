@@ -1,20 +1,60 @@
 # pipeline_config.py - Central configuration and pipeline runner
+#
+# Season and week are worked out automatically. Priority order:
+#   1. Env vars NFL_SEASON / NFL_WEEK (e.g. $env:NFL_WEEK='16')
+#   2. SEASON_OVERRIDE / WEEK_OVERRIDE below (set to a number to pin)
+#   3. Sleeper https://api.sleeper.app/v1/state/nfl
+#   4. FALLBACK_SEASON / FALLBACK_WEEK if Sleeper is unreachable
+# Sleeper's "week" is the current/upcoming week. Odds and comparison use that
+# week; stats use the last completed week (week - 1).
+#
+# Note: test_thresholds.read_config_from_file() exec()s this file on every
+# request, so don't rely on __file__ here and don't print at module level.
+import os
+import requests
+
+SEASON_OVERRIDE = None
+WEEK_OVERRIDE = None
+
+FALLBACK_SEASON = 2026
+FALLBACK_WEEK = 8
+
+
+def _sleeper_state():
+    """Return (season, week) from Sleeper, or None on any failure."""
+    try:
+        resp = requests.get("https://api.sleeper.app/v1/state/nfl", timeout=5)
+        resp.raise_for_status()
+        data = resp.json()
+        return int(data["season"]), int(data["week"])
+    except Exception:
+        return None
+
+
+def _resolve_season_week():
+    env_season, env_week = os.getenv("NFL_SEASON"), os.getenv("NFL_WEEK")
+    if env_season and env_week:
+        return int(env_season), int(env_week), "env"
+    if SEASON_OVERRIDE is not None and WEEK_OVERRIDE is not None:
+        return SEASON_OVERRIDE, WEEK_OVERRIDE, "override"
+    state = _sleeper_state()
+    if state:
+        return state[0], state[1], "sleeper"
+    return FALLBACK_SEASON, FALLBACK_WEEK, "fallback"
+
 
 # Season and week configuration
-SEASON = 2025
-CURRENT_WEEK = 18
+SEASON, CURRENT_WEEK, CONFIG_SOURCE = _resolve_season_week()
 
 # Odds configuration - use current week
-ODDS_WEEK = 18
+ODDS_WEEK = CURRENT_WEEK
 ODDS_DAYS_AHEAD = 2
 
-
-
-# Stats configuration  - use previous week
-STATS_WEEK = 17
+# Stats configuration - use previous (last completed) week
+STATS_WEEK = max(CURRENT_WEEK - 1, 1)
 
 # Comparison configuration - use current week
-COMPARISON_WEEK = 18
+COMPARISON_WEEK = CURRENT_WEEK
 
 # Known players with incomplete data (to skip in analysis)
 INCOMPLETE_DATA_PLAYERS = [
@@ -34,7 +74,7 @@ THRESHOLDS = {
 def run_pipeline():
     """Run the complete data pipeline"""
     
-    print(f"=== Running Pipeline for Season {SEASON} ===")
+    print(f"=== Running Pipeline for Season {SEASON} (config source: {CONFIG_SOURCE}) ===")
     print(f"Odds Week: {ODDS_WEEK}, Stats Week: {STATS_WEEK}, Comparison Week: {COMPARISON_WEEK}")
     
     # Step 1: Fetch and save stats
