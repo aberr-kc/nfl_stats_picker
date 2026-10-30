@@ -98,7 +98,7 @@ def fetch_weekly_stats_sleeper(year: int, week: int, season_type: str = 'regular
 
     required_cols = [
         "player_id", "player_name", "player_display_name", "team", "position",
-        "season", "week", "season_type", "passing_yards", "passing_tds",
+        "season", "week", "season_type", "gp", "passing_yards", "passing_tds",
         "rushing_yards", "rushing_tds",
         "receiving_yards", "receiving_tds", "receptions"
     ]
