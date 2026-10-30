@@ -35,3 +35,8 @@ Used Sleeper's `gp` field, not the all-zero rule. Sleeper weekly stats carry `gp
 
 - `MATCHUP_BETA` = 0.3 for passing yards, receiving yards and receptions, 0.0 for rushing (comment cites math review S4 / rec #15). Receptions use `opp_completions_game`.
 - Checks: rushing vs CIN factor 1.0 ("rushing matchup adjustment disabled (beta=0)"); receptions vs JAX use completions (23.3 vs 21.5, raw 1.0837 -> 1.0251); passing vs DET (max opp pass yds) factor 1.0952 = 1 + 0.3 x (1.3174 - 1) within 1e-9; season 2025 -> "team stats are for 2026, not 2025 (no adjustment)", factor 1.0 for every stat; unknown opponent XXX -> 1.0.
+
+## Item 4 (ingestion): outcome saved and part of the upsert key
+
+- `odds_api.save_odds(..., outcome=None)`; `outcome` is in the `filter_by` upsert key and in new rows; both the player-prop and the spreads/totals branches pass `outcome.get("name")`. The week-delete step is unchanged. The Odds API was not called.
+- `check_odds_save.py` on `%TEMP%\nflbug\oddstest` (requests.get patched to raise, `call_odds_api` patched with canned JSON, `fetch_and_store_odds(days_ahead=4, season=2099, week=1)` run twice): both runs gave 3 rows `('player_anytime_td','Yes',None,2.1), ('player_reception_yds','Over',55.5,1.87), ('player_reception_yds','Under',55.5,1.95)`. A direct `save_odds(... outcome="Over")` upsert updated only the Over row (Under kept 1.95). Real DB odds count 4,413 before and after.

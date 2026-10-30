@@ -121,7 +121,7 @@ def call_odds_api(url, params, max_retries=2):
 # -------------------------------
 # Save odds to DB
 # -------------------------------
-def save_odds(player_name, event_id, event_name, bookmaker, market, line, price, season, week):
+def save_odds(player_name, event_id, event_name, bookmaker, market, line, price, season, week, outcome=None):
     if not market or not bookmaker:
         logger.error("Missing required parameters for save_odds")
         return
@@ -145,11 +145,13 @@ def save_odds(player_name, event_id, event_name, bookmaker, market, line, price,
                 session.flush()  # Get the ID without committing
             player_id = f"custom_{player_name}"
 
-        # Check if odds already exist for same player/market/bookmaker/season/week
+        # Check if odds already exist for same player/market/bookmaker/outcome/season/week
+        # (Over and Under are separate rows, so their prices don't overwrite each other)
         existing = session.query(Odds).filter_by(
             player_id=player_id,
             market=market,
             bookmaker=bookmaker,
+            outcome=outcome,
             season=season,
             week=week
         ).first()
@@ -166,6 +168,7 @@ def save_odds(player_name, event_id, event_name, bookmaker, market, line, price,
                 market=market,
                 line=line,
                 price=price,
+                outcome=outcome,
                 season=season,
                 week=week
             )
@@ -288,6 +291,7 @@ def fetch_and_store_odds(days_ahead: int = 4, season=None, week=None):
                                         market=market_key,
                                         line=line,
                                         price=price,
+                                        outcome=outcome.get("name"),
                                         season=season,
                                         week=week
                                     )
@@ -313,6 +317,7 @@ def fetch_and_store_odds(days_ahead: int = 4, season=None, week=None):
                                         market=market_key,
                                         line=line,
                                         price=price,
+                                        outcome=outcome.get("name"),
                                         season=season,
                                         week=week
                                     )
