@@ -58,6 +58,7 @@ def check_stat_against_odds(player_name, player_stats, odds, thresholds):
         market = o.get("market")
         line = o.get("line")
         bookmaker = o.get("bookmaker")
+        prices = dict(o.get("prices") or {})
 
         if line is None:
             continue
@@ -153,6 +154,9 @@ def check_stat_against_odds(player_name, player_stats, odds, thresholds):
                     "adjustmentDetails": adjustment_details,
                     "probabilityOver": prob_over,
                     "probabilityUnder": prob_under,
+                    # Prices by outcome ({"Over": .., "Under": ..}; {"unknown": ..} for old rows)
+                    "prices": prices,
+                    "pickPrice": prices.get(verdict),
                 }
             )
 
