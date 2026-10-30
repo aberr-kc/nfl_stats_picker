@@ -416,7 +416,7 @@
         const seen = new Set();
         
         data.forEach(odd => {
-            const key = `${odd.bookmaker}-${odd.market}-${odd.line}-${odd.price}`;
+            const key = `${odd.bookmaker}-${odd.market}-${odd.outcome || ''}-${odd.line}-${odd.price}`;
             if (!seen.has(key)) {
                 seen.add(key);
                 uniqueOdds.push(odd);
@@ -464,7 +464,7 @@
                 
                 const linePrice = document.createElement('div');
                 linePrice.style.cssText = 'font-size: 11px; color: #ffcc02; font-weight: bold;';
-                linePrice.textContent = `${odd.line ?? '-'} (${odd.price || ''})`;
+                linePrice.textContent = `${odd.outcome ? odd.outcome + ' ' : ''}${odd.line ?? '-'} (${odd.price || ''})`;
                 
                 oddChip.appendChild(bookmaker);
                 oddChip.appendChild(linePrice);
@@ -781,7 +781,7 @@
             
             // Create separate entry for each stat type
             Object.keys(statGroups).forEach(statType => {
-                const maxProb = Math.max(...statGroups[statType].map(s => s.probabilityOver || 0));
+                const maxProb = Math.max(...statGroups[statType].map(s => (s.threshold_rule === 'Under' ? s.probabilityUnder : s.probabilityOver) || 0));
                 playerStatEntries.push({
                     player: player,
                     matchup: matchup,
@@ -792,7 +792,7 @@
             });
         }
         
-        // Sort by highest probability
+        // Sort by highest picked-side probability
         playerStatEntries.sort((a, b) => b.maxProbability - a.maxProbability);
         
         // Return array of HTML strings instead of concatenated HTML
@@ -891,10 +891,10 @@
                         <tbody>
         `;
         
-            // Sort stats by highest probability over
+            // Sort stats by highest picked-side probability
         stats.sort((a, b) => {
-            const probA = a.probabilityOver || 0;
-            const probB = b.probabilityOver || 0;
+            const probA = (a.threshold_rule === 'Under' ? a.probabilityUnder : a.probabilityOver) || 0;
+            const probB = (b.threshold_rule === 'Under' ? b.probabilityUnder : b.probabilityOver) || 0;
             return probB - probA; // Highest probability first
         });
         

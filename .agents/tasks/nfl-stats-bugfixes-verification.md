@@ -78,3 +78,19 @@ Graded against actual week-16 stats for the resolved player_id (median flagged l
 | Math review honest baseline | 324 | 90 | 42/90 = 46.7% |
 
 After: Over 27/54, Under 10/21. Break-even at the stored prices is about 53%, so this is consistent with the review: no edge, just no leakage.
+
+## Item 3 (sort) and end-to-end on the served page
+
+The user's own server was already listening on 127.0.0.1:8000, so the verification server ran on 127.0.0.1:8001 with the venv (`uvicorn app:app`, background, real DB, no NFL_* env vars). It was stopped afterwards and nothing listens on 8001. The user's 8000 server was not touched.
+
+- `GET /` 200 text/html (56,963 bytes, contains "NFL STAT PICKS" and the new `threshold_rule === 'Under'` sort); `GET /static/App.css` 200 text/css (4,406 bytes); `GET /static/nfl_stats.db` 404; `GET /static/.env` 404.
+- `GET /team-stats/CHI`: Rush Yards/Game 154.3, Opp Rush 87.6, Pass 236.4, Opp Pass 225.9 (2026). `GET /league-defensive-averages`: 111.4 / 221.5 / 21.5. `GET /league-averages`: 112.0 / 221.0.
+- `GET /generate-picks`: 200, `success: true`, count 6, 42 s. Server log: `Generating picks for Season=2026, Week=8 (config source: sleeper)`, `DEBUG: Checked 2634 players, 575 had stats, 23 had odds, 6 flagged`; no tracebacks.
+  - (a) Josh Jacobs rushing_yards: player_value 36.0 (was 12.0), probabilityUnder 88.7 at 60.5 (was 91.7); 88.1-90.8 across the 5 books. It is still an Under because his one real game (36 yds) is 24.5 below the line, and a single game gives a very confident SD; that is the out-of-scope S7/J1 SD issue. Dropping his DNP zeros also adds receiving_yards (55.0, week 7 only) and receptions (5.0) Over picks.
+  - (b) All 55 rows carry `prices` / `pickPrice`; all are legacy `{"unknown": price}` with pickPrice None until odds are re-fetched.
+  - (c) rushing_yards changePct 0.0 on all 10 rows; pass/rec/receptions changePct -3.5 / -1.8 / +1.5, each equal to 0.3 x (raw - 1) from the 2026 JSON; receptions cite completions allowed. Opponents: Jacobs, Jordan Love, Matthew Golden (GB) -> CAR; Jalen Coker, Tetairoa McMillan (CAR) -> GB.
+  - (d) 0 duplicate (player, stat, bookmaker) rows. Served output identical to the copy run (same keys, probabilities, rules).
+  - (e) `node check_sort.js` against the served page (extracts `formatPicksFromJSON` / `formatPlayerStatSection` from the HTML): 11 cards in non-increasing picked-side order, top card Josh Jacobs rushing_yards Under 90.8%. On the 2025 wk16 copy JSON: 76 cards, top 5 all Unders at 92.4-92.5%. Both print SORT CHECK PASSED.
+- CLI: `test_thresholds.py --json` with cwd `%TEMP%\nflbug\run`, NFL_SEASON=2025 NFL_WEEK=16: exit 0, valid JSON, 59 players / 248 rows (same as the function run), no tracebacks (logs go to stderr).
+- `py_compile` exit 0: teams.py team_stats.py models.py fetch_stats.py save_to_db.py backfill_gp.py odds_api.py test_thresholds.py Odds_vs_Stats_Check.py app.py.
+- `index.html` odds chips now show the outcome (e.g. "Over 55.5 (1.87)") and include it in the dedup key; legacy rows show no label.
