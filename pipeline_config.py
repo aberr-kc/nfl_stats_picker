@@ -91,7 +91,9 @@ def run_pipeline():
     # Step 3: Run threshold analysis
     print("\n3. Running threshold analysis...")
     import subprocess
-    subprocess.run(["python", "test_thresholds.py"])
+    import sys
+    # Use the same interpreter (e.g. the .venv) that is running this pipeline.
+    subprocess.run([sys.executable, "test_thresholds.py"])
 
 if __name__ == "__main__":
     run_pipeline()
