@@ -28,6 +28,8 @@ class Odds(Base):
     market = Column(String, nullable=False)
     line = Column(Float)
     price = Column(Float)
+    # Over/Under/Yes/No or team name, as returned by the API; NULL for rows saved before this column existed
+    outcome = Column(String)
     season = Column(Integer)
     week = Column(Integer)
     season_type = Column(String, default='regular')  # 'regular' or 'playoffs'
@@ -59,6 +61,25 @@ def ensure_season_type_columns(engine):
             if columns and "season_type" not in columns:
                 conn.execute(text(f"ALTER TABLE {table} ADD COLUMN season_type TEXT DEFAULT 'regular'"))
 
+def ensure_weekly_stats_gp_column(engine):
+    """Add gp (Sleeper games played) to player_weekly_stats. Idempotent.
+
+    No default: existing rows stay NULL (unknown) until backfill_gp.py runs.
+    """
+    with engine.begin() as conn:
+        columns = [row[1] for row in conn.execute(text("PRAGMA table_info(player_weekly_stats)"))]
+        if columns and "gp" not in columns:
+            conn.execute(text("ALTER TABLE player_weekly_stats ADD COLUMN gp REAL"))
+
+def ensure_odds_outcome_column(engine):
+    """Add outcome (Over/Under/Yes/No) to odds. Idempotent; existing rows stay NULL."""
+    with engine.begin() as conn:
+        columns = [row[1] for row in conn.execute(text("PRAGMA table_info(odds)"))]
+        if columns and "outcome" not in columns:
+            conn.execute(text("ALTER TABLE odds ADD COLUMN outcome TEXT"))
+
 # Create tables
 Base.metadata.create_all(engine)
 ensure_season_type_columns(engine)
+ensure_weekly_stats_gp_column(engine)
+ensure_odds_outcome_column(engine)
