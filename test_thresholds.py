@@ -36,6 +36,41 @@ ADJUSTED_KEYS = {
 # Outlier lines: drop a bookmaker's line when it is more than this fraction
 # away from the median line across bookmakers (math review S10 / rec #10).
 OUTLIER_MAX_DEVIATION = 0.25
+# Count markets also need an absolute gap > 1.0 unit before a line is dropped.
+COUNT_MARKETS = {"player_receptions", "player_pass_tds", "player_rush_attempts"}
+
+HISTORY_COLS = ['passing_yards', 'passing_tds', 'rushing_yards', 'rushing_tds',
+                'receiving_yards', 'receiving_tds', 'receptions']
+
+
+def get_played_history(conn, player_id, season, week, max_games=17):
+    """Played regular-season games strictly before (season, week), most recent first.
+
+    Crosses into earlier seasons. Keyed on player_id. NULL stats read as 0.
+    This is the only history query model v2 uses (live and in backtest.py), so
+    it owns the leak-free invariant. SQLAlchemyError propagates to the caller.
+    """
+    rows = conn.execute(text(f"""
+        SELECT season, week, gp, position, team, passing_yards, passing_tds, rushing_yards,
+               rushing_tds, receiving_yards, receiving_tds, receptions
+        FROM player_weekly_stats
+        WHERE player_id = :pid
+          AND season_type = 'regular'
+          AND season IS NOT NULL AND week IS NOT NULL
+          AND (season < :season OR (season = :season AND week < :week))
+          AND {PLAYED_FILTER}
+        ORDER BY season DESC, CAST(week AS INTEGER) DESC
+        LIMIT :max_games
+    """), {"pid": player_id, "season": season, "week": week, "max_games": max_games}).mappings().all()
+    history = []
+    for r in rows:
+        d = dict(r)
+        d["season"] = int(d["season"])
+        d["week"] = int(d["week"])
+        for c in HISTORY_COLS:
+            d[c] = float(d[c]) if d[c] is not None else 0.0
+        history.append(d)
+    return history
 
 
 def get_recent_3_game_stats_by_id(year: int, player_id: str, current_week: int):
@@ -269,10 +304,17 @@ def drop_outlier_lines(entries, player_name, season, week):
         if median == 0:
             continue
         for e in group:
-            if abs(e["line"] - median) / abs(median) > OUTLIER_MAX_DEVIATION:
+            rel = abs(e["line"] - median) / abs(median)
+            if market in COUNT_MARKETS:
+                # A one-unit alt line on a count market is a real line: drop only
+                # when it is also more than 1.0 unit from the median (strict).
+                drop = rel > OUTLIER_MAX_DEVIATION and abs(e["line"] - median) > 1.0
+            else:
+                drop = rel > OUTLIER_MAX_DEVIATION
+            if drop:
                 dropped.add(id(e))
-                print(f"Dropped outlier line: {player_name} {market} {e['bookmaker']} {e['line']} "
-                      f"(median {median}, wk {week} {season})", file=sys.stderr)
+                logger.info(f"Dropped outlier line: {player_name} {market} {e['bookmaker']} {e['line']} "
+                            f"(median {median}, wk {week} {season})")
     return [e for e in entries if id(e) not in dropped]
 
 
