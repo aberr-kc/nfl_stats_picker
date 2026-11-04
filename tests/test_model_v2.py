@@ -279,5 +279,177 @@ class TestParams(unittest.TestCase):
         self.assertTrue(str(cm.exception).startswith("not found:"))
 
 
+POLICY = {"margin": 0.03, "min_games": 3}
+
+
+def _ou(book, line, prices, market="player_receptions"):
+    return {"market": market, "line": line, "bookmaker": book, "event_name": "A vs B", "prices": prices}
+
+
+def _group(entries):
+    groups = model_v2.group_lines(entries, "P")
+    assert len(groups) == 1
+    return next(iter(groups.values()))
+
+
+def _flag(**kw):
+    base = dict(model_error=False, price=1.9, market_source="no-vig", games_used=6, is_td=False,
+                far_line=False, edge=0.10, policy=POLICY)
+    base.update(kw)
+    return model_v2.decide_flag(**base)
+
+
+class TestMarket(unittest.TestCase):
+    def test_devig_pair(self):
+        p, src, o = model_v2.market_prob(_group([_ou("A", 4.5, {"Over": 1.87, "Under": 1.95})]), 1.064)
+        self.assertAlmostEqual(p, 0.5105, places=4)
+        self.assertEqual((src, o), ("no-vig", None))
+
+    def test_median_across_books(self):
+        g = _group([_ou("A", 4.5, {"Over": 1.87, "Under": 1.95}), _ou("B", 4.5, {"Over": 2.0, "Under": 1.8}),
+                    _ou("C", 4.5, {"Over": 1.7, "Under": 2.1})])
+        per = sorted((1 / o) / (1 / o + 1 / u) for o, u in ((1.87, 1.95), (2.0, 1.8), (1.7, 2.1)))
+        self.assertAlmostEqual(model_v2.market_prob(g, 1.064)[0], per[1])
+
+    def test_one_sided(self):
+        p, src, o = model_v2.market_prob(_group([_ou("A", 4.5, {"Over": 1.25})]), 1.064)
+        self.assertAlmostEqual(p, 0.752, places=3)
+        self.assertEqual((src, o), ("one-sided (de-vigged)", 1.064))
+
+    def test_td_example(self):
+        g = _group([{"market": "player_anytime_td", "line": None, "bookmaker": "A", "event_name": "x",
+                     "prices": {"unknown": 5.0}}])
+        p_mkt, src, _ = model_v2.market_prob(g, 1.25)
+        self.assertAlmostEqual(p_mkt, 0.16)
+        p_final = model_v2.anchor(p_mkt, 0.20, 0.25)
+        self.assertAlmostEqual(p_final, 0.17)
+        edge = p_final - 1 / 5.0
+        self.assertAlmostEqual(edge, -0.03)
+        self.assertFalse(_flag(price=5.0, market_source=src, is_td=True, edge=edge)[0])
+
+    def test_cross_book(self):
+        g = _group([_ou("A", 4.5, {"Over": 1.90}), _ou("B", 4.5, {"Under": 1.95})])
+        p, src, _ = model_v2.market_prob(g, 1.064)
+        self.assertAlmostEqual(p, 0.5065, places=4)
+        self.assertEqual(src, "no-vig (cross-book)")
+
+    def test_unknown_ignored(self):
+        g = _group([_ou("A", 4.5, {"Over": 1.90}), _ou("C", 4.5, {"unknown": 3.0})])
+        p, src, _ = model_v2.market_prob(g, 1.064)
+        self.assertEqual(src, "one-sided (de-vigged)")
+        self.assertAlmostEqual(p, (1 / 1.90) / 1.064)
+        self.assertEqual(g["best"], {"Over": (1.90, ["A"])})
+        self.assertEqual(g["unknown_books"], ["C"])
+
+    def test_only_unknown_is_none(self):
+        g = _group([_ou("A", 4.5, {"unknown": 1.87}), _ou("B", 4.5, {"unknown": 1.9})])
+        self.assertEqual(model_v2.market_prob(g, 1.064), (0.5, "none", None))
+        self.assertEqual(g["best"], {})
+
+    def test_invalid_price_is_missing(self):
+        with self.assertLogs("model_v2", "WARNING"):
+            g = _group([_ou("A", 4.5, {"Over": 1.0, "Under": 1.9})])
+        self.assertNotIn("Over", g["best"])
+
+    def test_decide_flag_reasons_in_order(self):
+        self.assertEqual(_flag(model_error=True, price=None), (False, "model error"))
+        self.assertEqual(_flag(market_source="none"), (False, "no price"))  # price wrongly present
+        self.assertEqual(_flag(price=None, edge=0.5), (False, "no price"))
+        self.assertEqual(_flag(games_used=2, far_line=True), (False, "fewer than 3 games"))
+        self.assertEqual(_flag(games_used=1, is_td=True), (True, None))
+        self.assertEqual(_flag(far_line=True, edge=0.01), (False, "line far from player mean"))
+        self.assertEqual(_flag(edge=0.03), (False, "edge below 3.0 pts"))
+        self.assertEqual(_flag(edge=0.031), (True, None))
+
+    def test_anchor(self):
+        self.assertEqual(model_v2.anchor(0.4, 0.9, 0), 0.4)
+        self.assertAlmostEqual(model_v2.anchor(0.4, 0.8, 0.25), 0.5)
+
+    def _row(self, entries, k, history=None):
+        p = valid_params()
+        p["stats"]["receptions"]["k"] = k
+        history = history or [{"receptions": 5.0, "position": "WR", "rushing_tds": 0, "receiving_tds": 0}] * 6
+        rows, _ = model_v2.evaluate_player("P", history, entries, p, POLICY)
+        return rows[0]
+
+    def test_edge_sign_and_source(self):
+        r = self._row([_ou("A", 4.5, {"Over": 1.87, "Under": 1.95})], 0.1)
+        self.assertEqual(r["edgeSource"], "model + price")
+        expect = (r["probFinal"] / 100) - 1 / r["price"]
+        self.assertAlmostEqual(r["edgePts"], round(100 * expect, 1), delta=0.11)
+        r0 = self._row([_ou("A", 4.5, {"Over": 1.87, "Under": 1.95})], 0.0)
+        self.assertEqual(r0["edgeSource"], "price only")
+        self.assertLess(r0["edgePts"], 0)  # k = 0 against a single book's own vig
+
+    def test_price_only_flag(self):
+        entries = [_ou("A", 4.5, {"Over": 2.25, "Under": 1.70}), _ou("B", 4.5, {"Over": 1.90, "Under": 1.95}),
+                   _ou("C", 4.5, {"Over": 1.92, "Under": 1.92})]
+        r = self._row(entries, 0.0)
+        self.assertEqual((r["side"], r["bookmaker"], r["marketSource"]), ("Over", "A", "no-vig"))
+        self.assertTrue(r["flagged"])
+        self.assertEqual(r["edgeSource"], "price only")
+        self.assertGreater(r["edgePts"], 3.0)
+
+
+class TestFarLine(unittest.TestCase):
+    def test_excluded(self):
+        self.assertTrue(model_v2.far_line("passing_yards", 213.5, 7.3))
+        self.assertTrue(model_v2.far_line("rushing_yards", 30.5, 5.5))
+        self.assertTrue(model_v2.far_line("receiving_yards", 15.5, 40.0))
+
+    def test_kept(self):
+        self.assertFalse(model_v2.far_line("receiving_yards", 20.5, 48.8))
+        self.assertFalse(model_v2.far_line("receptions", 0.5, 1.7))
+        self.assertFalse(model_v2.far_line("passing_tds", 0.5, 1.6))
+
+
+class TestTD(unittest.TestCase):
+    def test_shrinkage(self):
+        lam, n = model_v2.td_lambda([1, 0, 0, 0, 0, 0, 1], LAST6, 2, 0.25)
+        self.assertAlmostEqual(lam, (1 + 2 * 0.25) / (6 + 2))
+        self.assertEqual(n, 6)
+        self.assertAlmostEqual(model_v2.p_td(lam), 1 - math.exp(-lam))
+
+    def test_clamp(self):
+        lam, _ = model_v2.td_lambda([0, 0, 0], LAST6, 0, 0.25)
+        self.assertEqual(lam, 1e-6)
+        self.assertGreater(model_v2.p_td(lam), 0)
+
+
+class TestEvaluatePlayer(unittest.TestCase):
+    HIST = [{"season": 2026, "week": 8 - i, "position": "WR", "receptions": float(4 + i % 3),
+             "receiving_yards": 50.0, "rushing_yards": 0.0, "passing_yards": 0.0, "passing_tds": 0.0,
+             "rushing_tds": 0.0, "receiving_tds": float(i == 0)} for i in range(1, 8)]
+    ENTRIES = [_ou("A", 4.5, {"unknown": 1.87}), _ou("B", 4.5, {"unknown": 1.90}),
+               {"market": "player_anytime_td", "line": None, "bookmaker": "A", "event_name": "x",
+                "prices": {"unknown": 3.0}}]
+    KEYS = {"model_version", "player_name", "stat", "market", "line", "player_value", "gamesUsed", "side",
+            "threshold_rule", "probModelOver", "probMarketOver", "probFinalOver", "probModel", "probMarket",
+            "probFinal", "probabilityOver", "probabilityUnder", "marketSource", "overround", "price",
+            "bookmaker", "bookmakers", "impliedProb", "edgePts", "edgeSource", "flagged", "noFlagReason",
+            "prices", "adjustmentDetails"}
+
+    def test_rows(self):
+        rows, counters = model_v2.evaluate_player("P", self.HIST, self.ENTRIES, valid_params(), POLICY)
+        self.assertEqual(len(rows), 2)
+        for r in rows:
+            self.assertTrue(self.KEYS <= set(r), self.KEYS - set(r))
+        ou = next(r for r in rows if r["stat"] == "receptions")
+        self.assertEqual((ou["marketSource"], ou["flagged"], ou["noFlagReason"]), ("none", False, "no price"))
+        self.assertIsNone(ou["probMarketOver"])
+        self.assertEqual(ou["gamesUsed"], 6)
+        td = next(r for r in rows if r["stat"] == "anytime_td")
+        self.assertEqual((td["side"], td["line"], td["marketSource"]), ("Yes", None, "one-sided (de-vigged)"))
+        self.assertEqual(counters["markets_evaluated"], 2)
+        self.assertEqual(counters["no_price"], 1)
+
+    def test_model_error(self):
+        with mock.patch("model_v2.p_over_negbin", side_effect=RuntimeError("boom")):
+            with self.assertLogs("model_v2", "ERROR"):
+                rows, counters = model_v2.evaluate_player("P", self.HIST, self.ENTRIES, valid_params(), POLICY)
+        self.assertEqual([r["stat"] for r in rows], ["anytime_td"])
+        self.assertEqual(counters["model_errors"], 1)
+
+
 if __name__ == "__main__":
     unittest.main()
