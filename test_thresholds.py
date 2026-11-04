@@ -1,14 +1,20 @@
 # check_thresholds.py
 import logging
+import os
 import statistics
 import sys
+from pathlib import Path
 
 from sqlalchemy import create_engine, text
 from sqlalchemy.exc import SQLAlchemyError
 from Odds_vs_Stats_Check import check_stat_against_odds, compute_player_stats
 import traceback
 
-DB_PATH = "sqlite:///nfl_stats.db"
+# NFL_STATS_DB lets backtest.py / verification point every engine at a DB copy.
+DB_PATH = "sqlite:///" + os.getenv("NFL_STATS_DB", "nfl_stats.db")
+# Fitted v2 parameters (written only by backtest.py --write-params).
+MODEL_V2_PARAMS_PATH = os.getenv(
+    "NFL_MODEL_V2_PARAMS", str(Path(__file__).resolve().parent / "model_v2_params.json"))
 engine = create_engine(DB_PATH)
 logger = logging.getLogger(__name__)
 
@@ -334,6 +340,9 @@ def read_config_from_file():
         content = f.read()
         # amazonq-ignore-next-line
         exec(content, config)
+    # Verification-only override; validated in evaluate_week.
+    if os.getenv("NFL_MODEL_VERSION"):
+        config["MODEL_VERSION"] = os.getenv("NFL_MODEL_VERSION")
     return config
 
 def get_flagged_players_json_updated():

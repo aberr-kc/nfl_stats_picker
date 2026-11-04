@@ -1,8 +1,10 @@
 # target_share_calc.py - Calculate target share and opportunity adjustments
 
+import os
+
 from sqlalchemy import create_engine, text
 
-DB_PATH = "sqlite:///nfl_stats.db"
+DB_PATH = "sqlite:///" + os.getenv("NFL_STATS_DB", "nfl_stats.db")
 engine = create_engine(DB_PATH)
 
 def calculate_team_totals(season, week_range):

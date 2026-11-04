@@ -57,5 +57,34 @@ class TestV1Fixes(unittest.TestCase):
         self.assertIsNotNone(rows[0]["probabilityUnder"])
 
 
+class TestConfig(unittest.TestCase):
+    def setUp(self):
+        self._cwd = os.getcwd()
+        os.chdir(REPO)  # read_config_from_file opens the relative pipeline_config.py
+
+    def tearDown(self):
+        os.chdir(self._cwd)
+
+    def test_defaults(self):
+        import test_thresholds
+        with mock.patch.dict(os.environ, {}, clear=False):
+            os.environ.pop("NFL_MODEL_VERSION", None)
+            cfg = test_thresholds.read_config_from_file()
+        self.assertEqual(cfg["MODEL_VERSION"], "v1")
+        self.assertEqual(cfg["V2_EDGE_MARGIN"], 0.03)
+        self.assertEqual(cfg["V2_MIN_GAMES_FOR_FLAG"], 3)
+
+    def test_env_override(self):
+        import test_thresholds
+        with mock.patch.dict(os.environ, {"NFL_MODEL_VERSION": "v2"}):
+            cfg = test_thresholds.read_config_from_file()
+        self.assertEqual(cfg["MODEL_VERSION"], "v2")
+
+    def test_engine_uses_nfl_stats_db(self):
+        import test_thresholds
+        self.assertEqual(os.path.normcase(test_thresholds.engine.url.database),
+                         os.path.normcase(os.environ["NFL_STATS_DB"]))
+
+
 if __name__ == "__main__":
     unittest.main()

@@ -7,6 +7,7 @@ from sqlalchemy.exc import SQLAlchemyError
 import pandas as pd
 from Odds_vs_Stats_Check import check_stat_against_odds
 import logging
+import os
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
@@ -29,7 +30,7 @@ app.add_middleware(
 
 # DB connection with error handling
 try:
-    engine = create_engine("sqlite:///nfl_stats.db")  # Use the correct database file
+    engine = create_engine("sqlite:///" + os.getenv("NFL_STATS_DB", "nfl_stats.db"))  # Use the correct database file
 except Exception as e:
     logger.error(f"Failed to create database engine: {e}")
     raise
