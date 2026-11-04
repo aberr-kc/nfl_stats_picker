@@ -1,11 +1,15 @@
+import logging
 from math import sqrt, pi, exp, erf
+
+logger = logging.getLogger(__name__)
+
 
 def calculate_probability(adjusted_avg, adjusted_std, betting_line, player_stats=None):
     """Calculate probability of going over/under betting line using normal distribution with enhanced variance modeling"""
     try:
         # Handle edge cases
         if adjusted_avg is None or betting_line is None:
-            return 50.0, 50.0
+            return None
             
         adjusted_avg = float(adjusted_avg)
         betting_line = float(betting_line)
@@ -54,12 +58,15 @@ def calculate_probability(adjusted_avg, adjusted_std, betting_line, player_stats
         prob_under = max(5, min(95, prob_under * 100))
         
         return round(prob_over, 1), round(prob_under, 1)
-    except:
-        return 50.0, 50.0
+    except Exception:
+        logger.exception("calculate_probability failed (avg=%r, std=%r, line=%r)",
+                         adjusted_avg, adjusted_std, betting_line)
+        return None
 
 def add_probability_to_flagged(flagged_stat, adjusted_avg, adjusted_std, betting_line):
     """Add probability calculations to a flagged stat"""
-    prob_over, prob_under = calculate_probability(adjusted_avg, adjusted_std, betting_line)
+    result = calculate_probability(adjusted_avg, adjusted_std, betting_line)
+    prob_over, prob_under = result if result is not None else (None, None)
     flagged_stat['probabilityOver'] = prob_over
     flagged_stat['probabilityUnder'] = prob_under
     flagged_stat['adjustedStdDev'] = adjusted_std

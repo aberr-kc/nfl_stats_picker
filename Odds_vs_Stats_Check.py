@@ -37,11 +37,14 @@ def compute_player_stats(rows):
 
 
 
-def check_stat_against_odds(player_name, player_stats, odds, thresholds):
+def check_stat_against_odds(player_name, player_stats, odds, thresholds, errors=None, include_unflagged=False):
     """
     Compare player stats vs betting odds using adaptive thresholds.
 
     Returns only unique flagged stats per player/stat/bookmaker.
+    include_unflagged=True also returns "No Bet" rows (used by backtest.py).
+    A row whose probability can't be computed is skipped (never shown as
+    50/50) and, when errors is a list, recorded there.
     """
     flagged = []
     seen = set()  # to deduplicate
@@ -94,7 +97,17 @@ def check_stat_against_odds(player_name, player_stats, odds, thresholds):
         else:
             verdict = "No Bet"
 
-        if verdict != "No Bet":
+        if verdict != "No Bet" or include_unflagged:
+            # Calculate probabilities; None means the calculation failed (logged)
+            from probability_calc import calculate_probability
+            probs = calculate_probability(avg_val, std_val, line, player_stats)
+            if probs is None:
+                if isinstance(errors, list):
+                    errors.append({"player": player_name, "stat": stat_key, "line": line,
+                                   "bookmaker": bookmaker, "reason": "probability error"})
+                continue
+            prob_over, prob_under = probs
+
             # Get adjusted stat value if available
             adjusted_passing = player_stats["avg"].get("adjusted_passing_yards", None)
             adjusted_rushing = player_stats["avg"].get("adjusted_rushing_yards", None)
@@ -132,10 +145,6 @@ def check_stat_against_odds(player_name, player_stats, odds, thresholds):
                     "changePct": receptions_adj_pct,
                     "explanation": f"Matchup: Opponent allows {abs(receptions_adj_pct):.1f}% {'more' if receptions_adj_pct > 0 else 'fewer'} completions than league avg - {direction} matchup for targets"
                 }
-            
-            # Calculate probabilities
-            from probability_calc import calculate_probability
-            prob_over, prob_under = calculate_probability(avg_val, std_val, line, player_stats)
             
             flagged.append(
                 {
