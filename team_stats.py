@@ -246,16 +246,23 @@ def build_adjustment(stat_name, original_value, weather_factor, weather_text, op
     team_factor = m["factor"]
     original = float(original_value)
     combined = weather_factor * team_factor
+    # Only components that change the value (|pct| >= 0.05) are listed, so neutral
+    # weather and the beta = 0 rushing matchup never show.
+    components = []
+    for label, factor, text in (("Weather", weather_factor, weather_text),
+                                ("Matchup", team_factor, m["explanation"])):
+        pct = round((factor - 1) * 100, 1)
+        if abs(pct) >= 0.05:
+            components.append({"label": label, "pct": pct, "text": text})
     return {
         "original": original,
         "adjusted": round(original * combined, 1),
         "changePct": round((combined - 1) * 100, 1),
         "teamFactor": team_factor,
         "weatherFactor": weather_factor,
-        "explanation": (f'<strong>Weather {round((weather_factor - 1) * 100, 1):+.1f}%</strong><br>'
-                        f'&nbsp;&nbsp;&nbsp;&nbsp;{weather_text}<br>'
-                        f'<strong>Matchup {round((team_factor - 1) * 100, 1):+.1f}%</strong><br>'
-                        f'&nbsp;&nbsp;&nbsp;&nbsp;{m["explanation"]}'),
+        "components": components,
+        "explanation": "<br>".join(f'<strong>{c["label"]} {c["pct"]:+.1f}%</strong><br>'
+                                   f'&nbsp;&nbsp;&nbsp;&nbsp;{c["text"]}' for c in components),
         "teamExplanation": m["explanation"],
     }
 

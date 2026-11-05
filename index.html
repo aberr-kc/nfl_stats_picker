@@ -1190,6 +1190,33 @@
     // Track dismissed players
     let dismissedPlayers = new Set();
     
+    // Adjustment components that changed the value (|pct| >= 0.05). The rushing
+    // matchup is never shown (its beta is 0). Rows without a components list
+    // (older payloads) fall back to the total and the server explanation.
+    function adjustmentComponents(stat) {
+        const adj = stat.adjustmentDetails;
+        if (!adj) return [];
+        if (Array.isArray(adj.components)) {
+            return adj.components.filter(c => Math.abs(Number(c.pct) || 0) >= 0.05
+                && !(stat.stat === 'rushing_yards' && c.label === 'Matchup'));
+        }
+        return Math.abs(Number(adj.changePct) || 0) >= 0.05 ? [{ legacyHtml: adj.explanation || 'Adjustment applied' }] : [];
+    }
+
+    function adjustmentCellHtml(stat, gameScriptText = '') {
+        const comps = adjustmentComponents(stat);
+        if (!comps.length) return '-';
+        const adj = stat.adjustmentDetails;
+        const changeColor = adj.changePct > 0 ? '#4CAF50' : '#f44336';
+        const changeIcon = adj.changePct > 0 ? '+' : (adj.changePct === 0 ? '±' : '-');
+        const lines = comps.map(c => (c.legacyHtml !== undefined ? c.legacyHtml
+            : `<strong>${escapeHtml(c.label)} ${c.pct > 0 ? '+' : ''}${Number(c.pct).toFixed(1)}%</strong><br>&nbsp;&nbsp;&nbsp;&nbsp;${escapeHtml(c.text)}`));
+        return `
+                    <div style="color: ${changeColor}; font-size: 12px; font-weight: bold;">${changeIcon}${Math.abs(adj.changePct)}%${gameScriptText}</div>
+                    <div class="adj-lines" style="color: #ccc; font-size: 9px; font-style: italic; margin-top: 2px; line-height: 1.2;">${lines.join('<br>')}</div>
+                `;
+    }
+
     function formatPlayerStatSection(player, matchup, statType, stats, model) {
         if (isV2(model)) {
             return formatV2StatSection(player, matchup, statType, stats, model);
@@ -1200,6 +1227,8 @@
         if (dismissedPlayers.has(playerId)) {
             return '';
         }
+        const showAdj = stats.some(s => adjustmentComponents(s).length > 0);
+        const adjHeaders = showAdj ? '<th>Adjusted Stat</th><th>Adjustments</th>' : '';
         
         let html = `
             <div id="player_${playerId}" style="margin-bottom: 15px; background: rgba(255,255,255,0.05); border-radius: 8px; overflow: hidden;">
@@ -1215,8 +1244,7 @@
                             <tr>
                                 <th>Stat</th>
                                 <th>Player Avg (3)</th>
-                                <th>Adjusted Stat</th>
-                                <th>Adjustments</th>
+                                ${adjHeaders}
                                 <th>Line</th>
                                 <th>Difference</th>
                                 <th>Bookmaker</th>
@@ -1250,30 +1278,16 @@
             const probability = stat.probabilityOver && stat.probabilityUnder ? 
                 `${stat.probabilityOver}% Over | ${stat.probabilityUnder}% Under` : '-';
             
-            // Format adjustment details
-            let adjustmentDisplay = '-';
-            if (stat.adjustmentDetails) {
-                const adj = stat.adjustmentDetails;
-                const changeColor = adj.changePct > 0 ? '#4CAF50' : '#f44336';
-                const changeIcon = adj.changePct > 0 ? '+' : (adj.changePct === 0 ? '±' : '-');
-                const gameScriptText = adj.gameScript ? ' (GS)' : '';
-                const explanation = adj.explanation || 'Adjustment applied';
-                adjustmentDisplay = `
-                    <div style="color: ${changeColor}; font-size: 12px; font-weight: bold;">
-                        ${changeIcon}${Math.abs(adj.changePct)}%${gameScriptText}
-                    </div>
-                    <div style="color: #ccc; font-size: 9px; font-style: italic; margin-top: 2px; line-height: 1.2;">
-                        ${explanation}
-                    </div>
-                `;
-            }
+            // Adjusted Stat / Adjustments cells only when this card has an adjustment
+            const adjCells = showAdj
+                ? `<td>${adjustedValue}</td><td>${adjustmentCellHtml(stat, stat.adjustmentDetails && stat.adjustmentDetails.gameScript ? ' (GS)' : '')}</td>`
+                : '';
             
             html += `
                 <tr>
                     <td style="color: #ffcc02; font-weight: bold;">${stat.stat}</td>
                     <td>${playerValue}</td>
-                    <td>${adjustedValue}</td>
-                    <td>${adjustmentDisplay}</td>
+                    ${adjCells}
                     <td style="font-weight: bold;">${stat.line}</td>
                     <td style="color: ${parseFloat(difference) > 0 ? '#4CAF50' : '#f44336'};">${difference}</td>
                     <td>${stat.bookmaker}</td>
@@ -1322,6 +1336,8 @@
         const badgeColor = flaggedRows.length ? '#4CAF50' : '#888';
         const anyFlagged = flaggedRows.length > 0;
         const cardEdge = top.edgePts === null || top.edgePts === undefined ? '' : top.edgePts;
+        const showAdj = stats.some(s => adjustmentComponents(s).length > 0);
+        const adjHeaders = showAdj ? '<th>Adjusted Stat</th><th>Adjustments</th>' : '';
 
         let html = `
             <div id="player_${playerId}" class="v2-card" data-flagged="${anyFlagged}" data-edge="${cardEdge}" style="margin-bottom: 15px; background: rgba(255,255,255,0.05); border-radius: 8px; overflow: hidden;">
@@ -1338,8 +1354,7 @@
                             <tr>
                                 <th>Stat</th>
                                 <th>${avgHeader}</th>
-                                <th>Adjusted Stat</th>
-                                <th>Adjustments</th>
+                                ${adjHeaders}
                                 <th>Line</th>
                                 <th>Side</th>
                                 <th>Price (book)</th>
@@ -1364,16 +1379,7 @@
                 adjustedValue = stat.adjustedReceptions;
             }
 
-            let adjustmentDisplay = '-';
-            if (stat.adjustmentDetails) {
-                const adj = stat.adjustmentDetails;
-                const changeColor = adj.changePct > 0 ? '#4CAF50' : '#f44336';
-                const changeIcon = adj.changePct > 0 ? '+' : (adj.changePct === 0 ? '±' : '-');
-                adjustmentDisplay = `
-                    <div style="color: ${changeColor}; font-size: 12px; font-weight: bold;">${changeIcon}${Math.abs(adj.changePct)}%</div>
-                    <div style="color: #ccc; font-size: 9px; font-style: italic; margin-top: 2px; line-height: 1.2;">${adj.explanation || 'Adjustment applied'}</div>
-                `;
-            }
+            const adjCells = showAdj ? `<td>${adjustedValue}</td><td>${adjustmentCellHtml(stat)}</td>` : '';
 
             const avgCell = `${stat.player_value}` + (!isTd && windowN && stat.gamesUsed < windowN ? ` (n = ${stat.gamesUsed})` : '');
             const priceCell = stat.price === null ? '-'
@@ -1399,8 +1405,7 @@
                 <tr class="v2-row" data-key="${escapeHtml(key)}" data-flagged="${stat.flagged}"${rowTitle}${rowStyle}>
                     <td style="color: #ffcc02; font-weight: bold;">${stat.stat}</td>
                     <td>${avgCell}</td>
-                    <td>${adjustedValue}</td>
-                    <td>${adjustmentDisplay}</td>
+                    ${adjCells}
                     <td style="font-weight: bold;">${isTd ? '-' : stat.line}</td>
                     <td>${escapeHtml(stat.side)}</td>
                     <td>${priceCell}</td>

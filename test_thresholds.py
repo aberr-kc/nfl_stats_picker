@@ -373,6 +373,7 @@ def apply_adjustments_to_flagged(flagged, adjustments):
             'adjusted': adj["adjusted"],
             'changePct': adj["changePct"],
             'explanation': adj["explanation"],
+            'components': adj["components"],
         }
 
 

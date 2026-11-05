@@ -13,8 +13,8 @@ const os = require('os');
 
 const base = (process.argv[2] || 'http://127.0.0.1:8001').replace(/\/$/, '');
 const FUNCS = ['escapeHtml', 'isV2', 'v2Cards', 'kZeroNoteHtml', 'toggleButtonHtml', 'zeroFlagMessage',
-    'renderPicks', 'toggleUnflagged', 'formatPicksFromJSON', 'formatPlayerStatSection', 'formatV2StatSection',
-    'displayPicksPage'];
+    'renderPicks', 'toggleUnflagged', 'formatPicksFromJSON', 'adjustmentComponents', 'adjustmentCellHtml',
+    'formatPlayerStatSection', 'formatV2StatSection', 'displayPicksPage'];
 
 const failures = [];
 function check(cond, msg) {
@@ -130,6 +130,95 @@ function checkState(label, html, allHtml, data, dataRows, expectAll) {
     return { cards: cards.length, rows: rows.length, pageCards };
 }
 
+// Split rendered HTML into cards and report, per card, whether the Adjusted
+// Stat / Adjustments columns are shown and whether every row has as many
+// cells as the header has columns.
+function cardTables(html) {
+    return html.split(/<div id="player_/).slice(1).map(chunk => {
+        const thead = (chunk.match(/<thead>([\s\S]*?)<\/thead>/) || [, ''])[1];
+        const nTh = (thead.match(/<th>/g) || []).length;
+        const tbody = (chunk.match(/<tbody>([\s\S]*?)<\/tbody>/) || [, ''])[1];
+        const rows = [...tbody.matchAll(/<tr[^>]*>([\s\S]*?)<\/tr>/g)].map(m => m[1]);
+        return {
+            showsAdj: thead.includes('<th>Adjusted Stat</th>') && thead.includes('<th>Adjustments</th>'),
+            anyAdjHeader: thead.includes('Adjusted Stat') || thead.includes('Adjustments'),
+            aligned: rows.every(r => (r.match(/<td[\s>]/g) || []).length === nTh),
+            nTh, rows, chunk,
+        };
+    });
+}
+
+function fixtureRow(stat, line, adj) {
+    const row = {
+        stat, line, side: 'Over', price: -110, bookmaker: 'book', bookmakers: ['book'], probModel: 55,
+        probMarket: 52, marketSource: 'no-vig (cross-book)', overround: null, probFinal: 53, edgePts: 1,
+        edgeSource: 'blend', flagged: false, noFlagReason: 'below margin', player_value: 60, gamesUsed: 4,
+        adjustmentDetails: adj,
+    };
+    const key = { rushing_yards: 'adjustedRushingYards', receiving_yards: 'adjustedReceivingYards' }[stat];
+    if (adj && key) row[key] = adj.adjusted;
+    return row;
+}
+
+const NEUTRAL_WEATHER = { label: 'Weather', pct: 0, text: 'No weather data (adjustment disabled)' };
+const RUSH_MATCHUP = { label: 'Matchup', pct: 0, text: 'rushing matchup adjustment disabled (beta=0)' };
+
+function checkFixtures(ctx) {
+    const model = { version: 'v2', window_n: 6 };
+    const render = (statType, rows, m = model) => {
+        ctx.__args = [statType, rows, m];
+        return cardTables(vm.runInContext("formatPlayerStatSection('Fixture Player', 'A @ B', __args[0], __args[1], __args[2])", ctx))[0];
+    };
+    const allAligned = (label, c) => check(c && c.aligned, `${label}: row cell count does not match the header`);
+
+    // (a) rushing, all neutral (served payload still lists them; frontend must drop them)
+    let c = render('rushing_yards', [fixtureRow('rushing_yards', 59.5,
+        { original: 60, adjusted: 60, changePct: 0, explanation: '', components: [NEUTRAL_WEATHER, RUSH_MATCHUP] })]);
+    check(c && !c.anyAdjHeader, '(a) neutral rushing card shows adjustment columns');
+    check(c && !c.chunk.includes('beta=0') && !c.chunk.includes('No weather data'), '(a) neutral text rendered');
+    allAligned('(a)', c);
+
+    // (b) receiving, matchup -1.8% only
+    c = render('receiving_yards', [fixtureRow('receiving_yards', 49.5,
+        { original: 50, adjusted: 49.1, changePct: -1.8, explanation: '',
+          components: [NEUTRAL_WEATHER, { label: 'Matchup', pct: -1.8, text: 'vs CHI defense <scaled x0.5>' }] })]);
+    check(c && c.showsAdj, '(b) receiving matchup card hides adjustment columns');
+    check(c && c.chunk.includes('Matchup -1.8%'), '(b) matchup line missing');
+    check(c && !c.chunk.includes('Weather'), '(b) neutral weather line shown');
+    check(c && c.chunk.includes('vs CHI defense &lt;scaled x0.5&gt;'), '(b) component text not escaped');
+    allAligned('(b)', c);
+
+    // (c) rushing, weather +2.0%, matchup line must not show
+    c = render('rushing_yards', [fixtureRow('rushing_yards', 59.5,
+        { original: 60, adjusted: 61.2, changePct: 2.0, explanation: '',
+          components: [{ label: 'Weather', pct: 2.0, text: 'Dome-like conditions' }, RUSH_MATCHUP] })]);
+    check(c && c.showsAdj, '(c) rushing weather card hides adjustment columns');
+    check(c && c.chunk.includes('Weather +2.0%'), '(c) weather line missing');
+    check(c && !c.chunk.includes('Matchup') && !c.chunk.includes('beta=0'), '(c) rushing matchup line shown');
+    allAligned('(c)', c);
+
+    // (d) mixed card: one bookmaker row adjusted, one neutral -> columns on all rows
+    c = render('receiving_yards', [
+        fixtureRow('receiving_yards', 49.5, { original: 50, adjusted: 49.1, changePct: -1.8, explanation: '',
+            components: [{ label: 'Matchup', pct: -1.8, text: 'vs CHI defense' }] }),
+        fixtureRow('receiving_yards', 52.5, { original: 50, adjusted: 50, changePct: 0, explanation: '', components: [] }),
+    ]);
+    check(c && c.showsAdj, '(d) mixed card hides adjustment columns');
+    check(c && c.rows.length === 2, '(d) expected 2 rows');
+    allAligned('(d)', c);
+
+    // v1 render follows the same rule
+    const v1 = { version: 'v1' };
+    const v1Row = adj => Object.assign(fixtureRow('rushing_yards', 59.5, adj), { probabilityOver: 55, probabilityUnder: 45 });
+    c = render('rushing_yards', [v1Row({ original: 60, adjusted: 60, changePct: 0, explanation: '', components: [NEUTRAL_WEATHER, RUSH_MATCHUP] })], v1);
+    check(c && !c.anyAdjHeader, '(v1 a) neutral card shows adjustment columns');
+    allAligned('(v1 a)', c);
+    c = render('rushing_yards', [v1Row({ original: 60, adjusted: 61.2, changePct: 2.0, explanation: '',
+        components: [{ label: 'Weather', pct: 2.0, text: 'cold' }, RUSH_MATCHUP] })], v1);
+    check(c && c.showsAdj && !c.chunk.includes('Matchup'), '(v1 c) weather card wrong');
+    allAligned('(v1 c)', c);
+}
+
 async function main() {
     const t0 = Date.now();
     const page = await (await fetch(`${base}/`)).text();
@@ -178,6 +267,17 @@ async function main() {
     check(htmlB.includes('Hide unflagged markets'), 'toggle label not "Hide unflagged markets"');
     const b = checkState('showUnflagged=true', htmlB, vm.runInContext("allPicks.join('')", ctx), data, dataRows, true);
 
+    // Adjustment columns on the served data (all cards)
+    const realCards = cardTables(vm.runInContext("allPicks.join('')", ctx));
+    const shown = realCards.filter(c => c.showsAdj).length;
+    realCards.forEach((c, i) => {
+        check(c.aligned, `served card ${i}: row cell count does not match the header`);
+        check(c.showsAdj || !c.anyAdjHeader, `served card ${i}: only one adjustment column shown`);
+        check(!c.chunk.includes('beta=0'), `served card ${i}: rushing beta=0 matchup line shown`);
+        check(!c.chunk.includes('No weather data'), `served card ${i}: neutral weather line shown`);
+    });
+    checkFixtures(ctx);
+
     const styles = [...page.matchAll(/<style[^>]*>[\s\S]*?<\/style>/g)].map(m => m[0]).join('\n');
     const shot = a.cards ? htmlA : htmlB;
     const outDir = path.join(os.tmpdir(), 'nfl_backtest');
@@ -187,6 +287,7 @@ async function main() {
 
     console.log(`/generate-picks ${secs}s: ${data.players.length} players, ${dataRows.length} rows, ${nFlagged} flagged, model ${JSON.stringify(data.model)}`);
     console.log(`showUnflagged=false: ${a.cards} cards (${a.pageCards} on page 1), ${a.rows} rows; showUnflagged=true: ${b.cards} cards (${b.pageCards} on page 1), ${b.rows} rows`);
+    console.log(`adjustment columns: shown on ${shown} of ${realCards.length} cards, hidden on ${realCards.length - shown}`);
     console.log(`render written to ${outFile}`);
     if (failures.length) {
         for (const f of failures) console.log(`FAIL: ${f}`);
