@@ -451,5 +451,52 @@ class TestEvaluatePlayer(unittest.TestCase):
         self.assertEqual(counters["model_errors"], 1)
 
 
+CONFIG = {"THRESHOLDS": {}, "INCOMPLETE_DATA_PLAYERS": [], "V2_EDGE_MARGIN": 0.03, "V2_MIN_GAMES_FOR_FLAG": 3}
+
+
+class TestModelInfo(unittest.TestCase):
+    def test_v1(self):
+        import test_thresholds
+        self.assertEqual(test_thresholds.get_model_info(CONFIG, None), {"version": "v1"})
+
+    def test_v2(self):
+        import test_thresholds
+        p = valid_params()
+        for s in model_v2.ALL_STATS:
+            p["stats"][s]["k"] = 0.0
+        info = test_thresholds.get_model_info(CONFIG, p)
+        self.assertEqual(set(info), {"version", "window_label", "window_n", "edge_margin_pts", "min_games_for_flag",
+                                     "params_fitted_on", "gate_label", "ou_k_all_zero", "td_k_zero"})
+        self.assertEqual((info["version"], info["window_n"], info["edge_margin_pts"]), ("v2", 6, 3.0))
+        self.assertTrue(info["ou_k_all_zero"])
+        self.assertEqual(info["window_label"], "last 6 played")
+
+
+class TestEvaluateWeekErrors(unittest.TestCase):
+    def test_invalid_params_raise_before_players(self):
+        import test_thresholds
+        path = os.path.join(tempfile.mkdtemp(), "bad_params.json")
+        with open(path, "w", encoding="utf-8") as f:
+            json.dump({"version": 2}, f)
+        with mock.patch("test_thresholds.MODEL_V2_PARAMS_PATH", path), \
+                mock.patch("test_thresholds.resolve_player_ids") as rp:
+            with self.assertRaises(model_v2.ParamsError):
+                test_thresholds.evaluate_week(2026, 8, "v2", CONFIG)
+            rp.assert_not_called()
+
+    def test_bad_version(self):
+        import test_thresholds
+        with mock.patch("test_thresholds.resolve_player_ids") as rp:
+            with self.assertRaises(ValueError) as cm:
+                test_thresholds.evaluate_week(2026, 8, "v3", CONFIG)
+            rp.assert_not_called()
+        self.assertIn("MODEL_VERSION must be 'v1' or 'v2'", str(cm.exception))
+
+    def test_bad_policy(self):
+        import test_thresholds
+        with self.assertRaises(ValueError):
+            test_thresholds.evaluate_week(2026, 8, "v2", dict(CONFIG, V2_EDGE_MARGIN=0.5), params=valid_params())
+
+
 if __name__ == "__main__":
     unittest.main()

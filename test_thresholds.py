@@ -131,10 +131,10 @@ def get_recent_3_game_stats_by_id(year: int, player_id: str, current_week: int):
             return stats
 
     except SQLAlchemyError as e:
-        print(f"Database error fetching stats for player_id {player_id}: {e}")
+        logger.warning(f"Database error fetching stats for player_id {player_id}: {e}")
         return None
     except Exception as e:
-        print(f"Unexpected error fetching stats for player_id {player_id}: {e}")
+        logger.warning(f"Unexpected error fetching stats for player_id {player_id}: {e}")
         return None
 
 
@@ -184,8 +184,7 @@ def _resolve_names(conn, season, current_week, name=None):
         if len(best) == 1:
             resolved[display_name] = best[0]
         else:
-            # stderr, so the --json CLI output stays valid JSON
-            print(f"Ambiguous player name skipped: {display_name} -> {sorted(pid for pid, _ in candidates)}", file=sys.stderr)
+            logger.info(f"Ambiguous player name skipped: {display_name} -> {sorted(pid for pid, _ in candidates)}")
     return resolved
 
 
@@ -252,10 +251,10 @@ def get_odds_for_player(player_display_name: str, season=None, week=None):
             
             return []
     except SQLAlchemyError as e:
-        print(f"Database error fetching odds for {player_display_name}: {e}")
+        logger.warning(f"Database error fetching odds for {player_display_name}: {e}")
         return []
     except Exception as e:
-        print(f"Unexpected error fetching odds for {player_display_name}: {e}")
+        logger.warning(f"Unexpected error fetching odds for {player_display_name}: {e}")
         return []
 
 
@@ -387,175 +386,202 @@ def read_config_from_file():
         config["MODEL_VERSION"] = os.getenv("NFL_MODEL_VERSION")
     return config
 
-def get_flagged_players_json_updated():
-    """Return flagged players as JSON for API use"""
-    import json
-    
-    config = read_config_from_file()
-    SEASON = config['SEASON']
-    COMPARISON_WEEK = config['COMPARISON_WEEK']
-    THRESHOLDS = config['THRESHOLDS']
-    INCOMPLETE_DATA_PLAYERS = config['INCOMPLETE_DATA_PLAYERS']
-    print(f"Generating picks for Season={SEASON}, Week={COMPARISON_WEEK} (config source: {config.get('CONFIG_SOURCE', 'unknown')})")
-    
-    flagged_players = []
-    
-    try:
-        with engine.connect() as conn:
-            players = resolve_player_ids(conn, SEASON, COMPARISON_WEEK)
-    except Exception as e:
-        print(f"Error in get_flagged_players_json: {e}")
-        import traceback
-        traceback.print_exc()
-        return []
-    
-    players_checked = 0
-    players_with_stats = 0
-    players_with_odds = 0
-    
+def _validate_policy(config):
+    margin = config.get("V2_EDGE_MARGIN")
+    min_games = config.get("V2_MIN_GAMES_FOR_FLAG")
+    if isinstance(margin, bool) or not isinstance(margin, (int, float)) or not 0 <= margin <= 0.2:
+        raise ValueError("V2_EDGE_MARGIN must be a number in [0, 0.2]")
+    if isinstance(min_games, bool) or not isinstance(min_games, int) or not 1 <= min_games <= 17:
+        raise ValueError("V2_MIN_GAMES_FOR_FLAG must be an integer in [1, 17]")
+    return {"margin": float(margin), "min_games": min_games}
+
+
+def get_model_info(config, params):
+    """Model description returned with /generate-picks (v1: just the version)."""
+    if params is None:
+        return {"version": "v1"}
+    import model_v2
+    window = params["window"]
+    return {
+        "version": "v2",
+        "window_label": model_v2.window_label(window),
+        "window_n": window["n"] if window["type"] == "last_n" else None,
+        "edge_margin_pts": round(100 * float(config["V2_EDGE_MARGIN"]), 1),
+        "min_games_for_flag": config["V2_MIN_GAMES_FOR_FLAG"],
+        "params_fitted_on": params["fitted_on"],
+        "gate_label": params["gate_label"],
+        "ou_k_all_zero": all(params["stats"][s]["k"] == 0 for s in model_v2.ALL_STATS),
+        "td_k_zero": params["td"]["k"] == 0,
+    }
+
+
+def evaluate_week(season, week, model_version, config, params=None, adjustments=True, include_unflagged=False):
+    """Evaluate every player for (season, week) with model v1 or v2.
+
+    Returns (players, summary). players = [{player, player_id, matchup, stats}].
+    v1 returns flagged rows only (include_unflagged=True: every line, for the
+    harness). v2 returns every evaluated row with a `flagged` boolean.
+    Params/policy errors and resolve_player_ids errors propagate to the caller.
+    """
+    if model_version not in ("v1", "v2"):
+        raise ValueError("MODEL_VERSION must be 'v1' or 'v2'")
+    policy = None
+    if model_version == "v2":
+        import model_v2
+        policy = _validate_policy(config)
+        if params is None:
+            params = model_v2.load_params(MODEL_V2_PARAMS_PATH)
+    else:
+        params = None
+    thresholds = config["THRESHOLDS"]
+    incomplete = set(config.get("INCOMPLETE_DATA_PLAYERS", []))
+
+    with engine.connect() as conn:
+        players = resolve_player_ids(conn, season, week)
+
+    summary = {"players_checked": 0, "flagged": 0, "skipped_db_error": 0, "v1_probability_errors": 0,
+               "markets_evaluated": 0, "skipped_no_history": 0, "skipped_mu_le_0": 0, "model_errors": 0,
+               "unsupported_line": 0, "no_price": 0, "excluded_far_line": 0}
+    v1_errors = []
+    out = []
     for player_display_name, player_id in players.items():
-        players_checked += 1
-        
+        if player_display_name in incomplete:
+            continue
+        summary["players_checked"] += 1
         try:
-            player_stats = get_recent_3_game_stats_by_id(SEASON, player_id, current_week=COMPARISON_WEEK)
-            if not player_stats:
-                continue
-
-            has_meaningful_stats = any(v > 0 for v in player_stats["avg"].values() if isinstance(v, (int, float)))
-            if not has_meaningful_stats or player_display_name in INCOMPLETE_DATA_PLAYERS:
-                continue
-            
-            players_with_stats += 1
-
-            odds = get_odds_for_player(player_display_name, season=SEASON, week=COMPARISON_WEEK)
-            if not odds:
-                if players_with_odds < 5:  # Debug first few
-                    print(f"DEBUG: No odds for {player_display_name}")
-                continue
-            
-            players_with_odds += 1
-            odds = drop_outlier_lines(collapse_odds(odds), player_display_name, SEASON, COMPARISON_WEEK)
-
-            # Calculate adjusted stats before flagging (display only)
-            adjustments = {}
-            try:
-                with engine.connect() as conn:
-                    _, adjustments = compute_adjustments(conn, player_id, player_stats, odds, SEASON)
-                store_adjustments_in_avg(player_stats, adjustments)
-            except Exception as e:
-                print(f"Adjustment error for {player_display_name}: {e}")
-                adjustments = {}
-            
-            flagged = check_stat_against_odds(player_display_name, player_stats, odds, THRESHOLDS)
-            if flagged:
-                apply_adjustments_to_flagged(flagged, adjustments)
-
-                matchup_info = ""
-                if odds and odds[0].get('event_name'):
-                    matchup_info = odds[0]['event_name']
-                
-                flagged_players.append({
-                    'player': player_display_name,
-                    'matchup': matchup_info,
-                    'stats': flagged
+            if model_version == "v1":
+                player_stats = get_recent_3_game_stats_by_id(season, player_id, current_week=week)
+                if not player_stats:
+                    continue
+                has_meaningful_stats = any(v > 0 for v in player_stats["avg"].values() if isinstance(v, (int, float)))
+                if not has_meaningful_stats:
+                    continue
+                odds = get_odds_for_player(player_display_name, season=season, week=week)
+                if not odds:
+                    continue
+                odds = drop_outlier_lines(collapse_odds(odds), player_display_name, season, week)
+                adj = {}
+                if adjustments:
+                    try:
+                        with engine.connect() as conn:
+                            _, adj = compute_adjustments(conn, player_id, player_stats, odds, season)
+                        store_adjustments_in_avg(player_stats, adj)
+                    except Exception as e:
+                        logger.warning(f"Adjustment error for {player_display_name}: {e}")
+                        adj = {}
+                rows = check_stat_against_odds(player_display_name, player_stats, odds, thresholds,
+                                               errors=v1_errors, include_unflagged=include_unflagged)
+                if rows and adj:
+                    apply_adjustments_to_flagged(rows, adj)
+                summary["markets_evaluated"] += len(rows)
+                summary["flagged"] += sum(1 for r in rows if r["threshold_rule"] != "No Bet")
+            else:
+                try:
+                    with engine.connect() as conn:
+                        history = get_played_history(conn, player_id, season, week)
+                except SQLAlchemyError as e:
+                    logger.warning(f"History query failed for player_id {player_id}: {e}")
+                    summary["skipped_db_error"] += 1
+                    continue
+                odds = get_odds_for_player(player_display_name, season=season, week=week)
+                if not odds:
+                    continue
+                odds = drop_outlier_lines(collapse_odds(odds), player_display_name, season, week)
+                rows, counters = model_v2.evaluate_player(player_display_name, history, odds, params, policy,
+                                                          target=(season, week))
+                for k, v in counters.items():
+                    summary[k] += v
+                if rows and adjustments:
+                    try:
+                        mu = {r["stat"]: r["player_value"] for r in rows if r["stat"] in model_v2.ALL_STATS}
+                        with engine.connect() as conn:
+                            _, adj = compute_adjustments(conn, player_id, {"avg": mu}, odds, season)
+                        apply_adjustments_to_flagged(rows, adj)
+                    except Exception as e:
+                        logger.warning(f"Adjustment error for {player_display_name}: {e}")
+                summary["flagged"] += sum(1 for r in rows if r["flagged"])
+            if rows:
+                out.append({
+                    "player": player_display_name,
+                    "player_id": player_id,
+                    "matchup": (odds[0].get("event_name") or "") if odds else "",
+                    "stats": rows,
                 })
         except Exception as e:
-            print(f"Error processing player {player_display_name}: {e}")
+            logger.exception(f"Error processing player {player_display_name}: {e}")
             continue
-    
-    print(f"DEBUG: Checked {players_checked} players, {players_with_stats} had stats, {players_with_odds} had odds, {len(flagged_players)} flagged")
-    return flagged_players
+
+    summary["v1_probability_errors"] = len(v1_errors)
+    summary["model"] = get_model_info(config, params)
+    logger.info("evaluate_week %s %s wk%s: players checked %d, markets evaluated %d, flagged %d, no_price %d, "
+                "excluded_far_line %d, model_errors %d, skipped_db_error %d, v1_probability_errors %d",
+                model_version, season, week, summary["players_checked"], summary["markets_evaluated"],
+                summary["flagged"], summary["no_price"], summary["excluded_far_line"], summary["model_errors"],
+                summary["skipped_db_error"], summary["v1_probability_errors"])
+    return out, summary
+
+
+def get_picks_with_model():
+    """(players, model info) for the configured season/week and MODEL_VERSION."""
+    config = read_config_from_file()
+    season, week = config['SEASON'], config['COMPARISON_WEEK']
+    version = config.get('MODEL_VERSION', 'v1')
+    logger.info(f"Generating picks for Season={season}, Week={week}, model={version} "
+                f"(config source: {config.get('CONFIG_SOURCE', 'unknown')})")
+    players, summary = evaluate_week(season, week, version, config)
+    return players, summary["model"]
+
+
+def get_flagged_players_json_updated():
+    """Return flagged players as JSON for API use"""
+    return get_picks_with_model()[0]
+
+
+def _fmt(v, suffix=""):
+    return "-" if v is None else f"{v}{suffix}"
+
 
 if __name__ == "__main__":
     import json
-    import sys
-    
-    # Check if we should output JSON
+
+    logging.basicConfig(level=logging.INFO, stream=sys.stderr)
     output_json = '--json' in sys.argv
-    
-    # Read fresh config from file
+
     config = read_config_from_file()
-    
     SEASON = config['SEASON']
     COMPARISON_WEEK = config['COMPARISON_WEEK']
-    THRESHOLDS = config['THRESHOLDS']
-    INCOMPLETE_DATA_PLAYERS = config['INCOMPLETE_DATA_PLAYERS']
-    
-    year = SEASON
-    current_week = COMPARISON_WEEK
-    
-    if not output_json:
-        print(f"Using config: Season={SEASON}, Week={COMPARISON_WEEK}")
-        print(f"Thresholds: {THRESHOLDS}")
+    version = config.get('MODEL_VERSION', 'v1')
 
-    # Fetch all players in DB (one player_id per display name)
+    if not output_json:
+        print(f"Using config: Season={SEASON}, Week={COMPARISON_WEEK}, model={version}")
+        if version == "v1":
+            print(f"Thresholds: {config['THRESHOLDS']}")
+
     try:
-        with engine.connect() as conn:
-            players = resolve_player_ids(conn, year, current_week)
-    except SQLAlchemyError as e:
-        if output_json:
-            print(json.dumps({"error": f"Database error: {e}"}))
-        else:
-            print(f"Database error fetching players: {e}")
-        exit(1)
+        players, summary = evaluate_week(SEASON, COMPARISON_WEEK, version, config)
     except Exception as e:
         if output_json:
-            print(json.dumps({"error": f"Unexpected error: {e}"}))
+            print(json.dumps({"success": False, "error": str(e)}))
         else:
-            print(f"Unexpected error fetching players: {e}")
-        exit(1)
+            print(f"Error: {e}")
+        sys.exit(1)
 
-    flagged_players = []
-    
-    for player_display_name, player_id in players.items():
-        try:
-            player_stats = get_recent_3_game_stats_by_id(year, player_id, current_week=current_week)
-            if not player_stats:
-                continue
-
-            has_meaningful_stats = any(v > 0 for v in player_stats["avg"].values() if isinstance(v, (int, float)))
-            
-            if not has_meaningful_stats or player_display_name in INCOMPLETE_DATA_PLAYERS:
-                continue
-
-            odds = get_odds_for_player(player_display_name, season=year, week=current_week)
-            if not odds:
-                continue
-            odds = drop_outlier_lines(collapse_odds(odds), player_display_name, year, current_week)
-
-            flagged = check_stat_against_odds(player_display_name, player_stats, odds, THRESHOLDS)
-
-            if flagged:
-                # Calculate adjusted stats (display only)
-                try:
-                    with engine.connect() as conn:
-                        _, adjustments = compute_adjustments(conn, player_id, player_stats, odds, year)
-                    apply_adjustments_to_flagged(flagged, adjustments)
-                except Exception:
-                    pass
-
-                # Get matchup info
-                matchup_info = ""
-                if odds and odds[0].get('event_name'):
-                    matchup_info = odds[0]['event_name']
-                
-                if output_json:
-                    flagged_players.append({
-                        'player': player_display_name,
-                        'matchup': matchup_info,
-                        'stats': flagged
-                    })
-                else:
-                    print(f"\nFlagged stats for {player_display_name} - {matchup_info}:")
-                    for f in flagged:
-                        print(f"  Player={f['player_name']}, Bookmaker={f['bookmaker']}, "
-                              f"Stat={f['stat']}, Player Value={f['player_value']}, "
-                              f"Line={f['line']}, Diff={f['difference']}, "
-                              f"Std Dev={f['std_dev']}, Rule={f['threshold_rule']}")
-
-        except Exception as e:
-            if not output_json:
-                print(f"Error checking thresholds for player {player_display_name}: {e}")
-    
     if output_json:
-        print(json.dumps(flagged_players))
+        print(json.dumps({"success": True, "players": players, "count": len(players), "model": summary["model"]}))
+    elif version == "v1":
+        for p in players:
+            print(f"\nFlagged stats for {p['player']} - {p['matchup']}:")
+            for f in p["stats"]:
+                print(f"  Player={f['player_name']}, Bookmaker={f['bookmaker']}, "
+                      f"Stat={f['stat']}, Player Value={f['player_value']}, "
+                      f"Line={f['line']}, Diff={f['difference']}, "
+                      f"Std Dev={f['std_dev']}, Rule={f['threshold_rule']}")
+    else:
+        n_label = summary["model"]["window_label"]
+        print(f"Player, Stat, Line, Side, Avg({n_label}), Model%, Market%, Final%, Price, Edge, Flagged/Reason")
+        for p in players:
+            for r in p["stats"]:
+                print(f"{p['player']}, {r['stat']}, {_fmt(r['line'])}, {r['side']}, {r['player_value']}, "
+                      f"{_fmt(r['probModel'])}, {_fmt(r['probMarket'])}, {_fmt(r['probFinal'])}, "
+                      f"{_fmt(r['price'])}, {_fmt(r['edgePts'])}, "
+                      f"{'FLAGGED' if r['flagged'] else r['noFlagReason']}")
