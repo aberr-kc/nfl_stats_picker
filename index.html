@@ -651,6 +651,79 @@
     let allPicks = [];
     let currentPage = 0;
     const PICKS_PER_PAGE = 10;
+    // Model v2 state: rows from /generate-picks, its model info, and the unflagged toggle
+    let showUnflagged = false;
+    let lastPlayers = [];
+    let lastModel = null;   // data.model; null or {version:'v1'} for v1
+
+    function escapeHtml(value) {
+        return String(value ?? '')
+            .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+            .replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+    }
+
+    function isV2(model) {
+        return model?.version === 'v2';
+    }
+
+    // One card per player + stat, with the keys used to order cards (v2 only)
+    function v2Cards(players) {
+        const cards = [];
+        for (const playerData of (players || [])) {
+            const groups = {};
+            for (const row of (playerData.stats || [])) {
+                (groups[row.stat] = groups[row.stat] || []).push(row);
+            }
+            for (const statType of Object.keys(groups)) {
+                const rows = groups[statType];
+                const edges = rows.map(r => r.edgePts).filter(e => e !== null && e !== undefined);
+                cards.push({
+                    player: playerData.player,
+                    matchup: playerData.matchup,
+                    statType: statType,
+                    stats: rows,
+                    anyFlagged: rows.some(r => r.flagged),
+                    maxEdge: edges.length ? Math.max(...edges) : null,
+                    maxProb: Math.max(...rows.map(r => r.probFinal || 0)),
+                });
+            }
+        }
+        return cards;
+    }
+
+    function kZeroNoteHtml() {
+        if (!isV2(lastModel) || !lastModel.ou_k_all_zero) return '';
+        return '<div class="k-zero-note" style="color: #ccc; font-size: 13px; margin: 10px 0;">Over/Under probabilities follow the market (the stats model showed no measurable edge in validation).</div>';
+    }
+
+    function toggleButtonHtml() {
+        if (!isV2(lastModel)) return '';
+        const unflagged = v2Cards(lastPlayers).filter(c => !c.anyFlagged).length;
+        const label = showUnflagged ? 'Hide unflagged markets' : `Show unflagged markets (${unflagged})`;
+        return `<div style="text-align: center; margin: 10px 0;"><button id="toggle-unflagged" onclick="toggleUnflagged()" style="padding: 8px 16px; background: #013369; color: white; border: none; border-radius: 4px; cursor: pointer;">${label}</button></div>`;
+    }
+
+    function zeroFlagMessage(players, model) {
+        const rows = (players || []).flatMap(p => p.stats || []);
+        const noPrice = rows.filter(r => r.marketSource === 'none' || r.price === null).length;
+        return `<div class="zero-flag" style="text-align: center; color: #ffcc02; padding: 20px;">No picks with an edge above ${model.edge_margin_pts} pts. ${rows.length} markets evaluated; ${noPrice} have no side price (re-fetch odds to get Over/Under prices).</div>` + kZeroNoteHtml();
+    }
+
+    function renderPicks() {
+        const picksContainer = document.getElementById('picks-container');
+        allPicks = formatPicksFromJSON(lastPlayers, lastModel);
+        currentPage = 0;
+        if (isV2(lastModel) && allPicks.length === 0) {
+            picksContainer.innerHTML = zeroFlagMessage(lastPlayers, lastModel) + toggleButtonHtml();
+        } else {
+            displayPicksPage();
+        }
+    }
+
+    function toggleUnflagged() {
+        showUnflagged = !showUnflagged;
+        renderPicks();
+    }
     
     async function generatePicks() {
         const button = document.getElementById('generatePicks');
@@ -674,6 +747,9 @@
             
             if (data.success) {
                 const players = data.players || [];
+                lastPlayers = players;
+                lastModel = data.model || null;
+                showUnflagged = false;
                 if (players.length === 0) {
                     picksContainer.innerHTML = '<div style="text-align: center; color: #ffcc02; padding: 20px;">No flagged players found.</div>';
                     const picksTitle = document.querySelector('.picks-section h2');
@@ -681,8 +757,7 @@
                         picksTitle.innerHTML = '🎯 Generated Picks';
                     }
                 } else {
-                    allPicks = formatPicksFromJSON(players);
-                    displayPicksPage();
+                    renderPicks();
                 }
             } else {
                 picksContainer.innerHTML = `<div style="color: #ff6b35; padding: 20px;">Error generating picks: ${data.error}</div>`;
@@ -713,7 +788,7 @@
             </div>
         `;
         
-        picksContainer.innerHTML = paginationHtml + pagePicksHtml + paginationHtml;
+        picksContainer.innerHTML = toggleButtonHtml() + kZeroNoteHtml() + paginationHtml + pagePicksHtml + paginationHtml;
         
         // Update title with total count
         const picksTitle = document.querySelector('.picks-section h2');
@@ -756,9 +831,21 @@
         }
     }
     
-    function formatPicksFromJSON(players) {
+    function formatPicksFromJSON(players, model) {
         if (!players || players.length === 0) {
             return [];
+        }
+
+        if (isV2(model)) {
+            // Flagged cards first, then best edge (nulls last), then final probability
+            const cards = v2Cards(players);
+            const edgeKey = e => (e === null ? -Infinity : e);
+            cards.sort((a, b) => (Number(b.anyFlagged) - Number(a.anyFlagged))
+                || (edgeKey(b.maxEdge) - edgeKey(a.maxEdge))
+                || (b.maxProb - a.maxProb));
+            return cards
+                .filter(c => showUnflagged || c.anyFlagged)
+                .map(c => formatPlayerStatSection(c.player, c.matchup, c.statType, c.stats, model));
         }
         
         // Create separate entries for each stat type
@@ -858,7 +945,10 @@
     // Track dismissed players
     let dismissedPlayers = new Set();
     
-    function formatPlayerStatSection(player, matchup, statType, stats) {
+    function formatPlayerStatSection(player, matchup, statType, stats, model) {
+        if (isV2(model)) {
+            return formatV2StatSection(player, matchup, statType, stats, model);
+        }
         const playerId = `${player.replace(/\s+/g, '_')}_${statType}`;
         
         // Skip if player-stat combination was dismissed
@@ -920,7 +1010,7 @@
             if (stat.adjustmentDetails) {
                 const adj = stat.adjustmentDetails;
                 const changeColor = adj.changePct > 0 ? '#4CAF50' : '#f44336';
-                const changeIcon = adj.changePct > 0 ? '+' : '-';
+                const changeIcon = adj.changePct > 0 ? '+' : (adj.changePct === 0 ? '±' : '-');
                 const gameScriptText = adj.gameScript ? ' (GS)' : '';
                 const explanation = adj.explanation || 'Adjustment applied';
                 adjustmentDisplay = `
@@ -957,6 +1047,135 @@
         return html;
     }
     
+    // Model v2 card: model / market / final probability, best price and edge per line
+    function formatV2StatSection(player, matchup, statType, stats, model) {
+        const playerId = `${player.replace(/\s+/g, '_')}_${statType}`;
+        if (dismissedPlayers.has(playerId)) {
+            return '';
+        }
+        const isTd = statType === 'anytime_td';
+        const windowN = model.window_n;
+        const avgHeader = isTd ? 'TD rate (λ/game)'
+            : (windowN ? `Avg (last ${windowN} played)` : 'Weighted avg (games played)');
+        const title = isTd ? 'ANYTIME TD' : statType.replace('_', ' ').toUpperCase();
+        const edgeKey = e => (e === null || e === undefined ? -Infinity : e);
+        stats.sort((a, b) => edgeKey(b.edgePts) - edgeKey(a.edgePts));
+
+        const flaggedRows = stats.filter(s => s.flagged);
+        const top = flaggedRows[0] || stats[0];
+        let badge;
+        if (flaggedRows.length) {
+            badge = `EDGE ${top.edgePts > 0 ? '+' : ''}${top.edgePts} pts`;
+        } else if (top.price === null || top.marketSource === 'none') {
+            badge = 'No price';
+        } else {
+            badge = 'No edge';
+        }
+        if (top.edgeSource === 'price only' && top.price !== null) {
+            badge += ' (best-price edge, model weight 0)';
+        }
+        const badgeColor = flaggedRows.length ? '#4CAF50' : '#888';
+        const anyFlagged = flaggedRows.length > 0;
+        const cardEdge = top.edgePts === null || top.edgePts === undefined ? '' : top.edgePts;
+
+        let html = `
+            <div id="player_${playerId}" class="v2-card" data-flagged="${anyFlagged}" data-edge="${cardEdge}" style="margin-bottom: 15px; background: rgba(255,255,255,0.05); border-radius: 8px; overflow: hidden;">
+                <div onclick="togglePlayer('${playerId}')" style="padding: 15px; cursor: pointer; background: rgba(213,10,10,0.1); border-bottom: 1px solid rgba(255,255,255,0.1);">
+                    <h3 onclick="loadPlayerStats('${player}', event)" style="color: #ffcc02; margin: 0 0 5px 0; font-size: 16px; display: inline-block; cursor: pointer; text-decoration: underline;" title="Click to load player stats">${player} - ${title}</h3>
+                    <span class="v2-badge" style="margin-left: 10px; padding: 2px 8px; border-radius: 4px; font-size: 12px; font-weight: bold; color: white; background: ${badgeColor};">${escapeHtml(badge)}</span>
+                    <span onclick="closePlayerStat('${playerId}', event)" style="float: right; color: #ff6b35; font-size: 16px; margin-left: 10px; cursor: pointer; padding: 2px 6px; border-radius: 3px; background: rgba(255,107,53,0.2);" title="Close">X</span>
+                    <span id="arrow_${playerId}" style="float: right; color: #ffcc02; font-size: 18px;">▼</span>
+                    <div style="color: #ccc; font-size: 14px;">${matchup}</div>
+                </div>
+                <div id="content_${playerId}" style="padding: 15px; display: block;">
+                    <table style="width: 100%; font-size: 12px;">
+                        <thead>
+                            <tr>
+                                <th>Stat</th>
+                                <th>${avgHeader}</th>
+                                <th>Adjusted Stat</th>
+                                <th>Adjustments</th>
+                                <th>Line</th>
+                                <th>Side</th>
+                                <th>Price (book)</th>
+                                <th>Model %</th>
+                                <th>Market %</th>
+                                <th>Final %</th>
+                                <th>Edge (pts)</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+        `;
+
+        stats.forEach(stat => {
+            let adjustedValue = '-';
+            if (stat.stat === 'passing_yards' && stat.adjustedPassingYards) {
+                adjustedValue = stat.adjustedPassingYards;
+            } else if (stat.stat === 'rushing_yards' && stat.adjustedRushingYards) {
+                adjustedValue = stat.adjustedRushingYards;
+            } else if (stat.stat === 'receiving_yards' && stat.adjustedReceivingYards) {
+                adjustedValue = stat.adjustedReceivingYards;
+            } else if (stat.stat === 'receptions' && stat.adjustedReceptions) {
+                adjustedValue = stat.adjustedReceptions;
+            }
+
+            let adjustmentDisplay = '-';
+            if (stat.adjustmentDetails) {
+                const adj = stat.adjustmentDetails;
+                const changeColor = adj.changePct > 0 ? '#4CAF50' : '#f44336';
+                const changeIcon = adj.changePct > 0 ? '+' : (adj.changePct === 0 ? '±' : '-');
+                adjustmentDisplay = `
+                    <div style="color: ${changeColor}; font-size: 12px; font-weight: bold;">${changeIcon}${Math.abs(adj.changePct)}%</div>
+                    <div style="color: #ccc; font-size: 9px; font-style: italic; margin-top: 2px; line-height: 1.2;">${adj.explanation || 'Adjustment applied'}</div>
+                `;
+            }
+
+            const avgCell = `${stat.player_value}` + (!isTd && windowN && stat.gamesUsed < windowN ? ` (n = ${stat.gamesUsed})` : '');
+            const priceCell = stat.price === null ? '-'
+                : `${stat.price} (${escapeHtml((stat.bookmakers || [stat.bookmaker]).join(', '))})`;
+            let marketCell;
+            if (stat.marketSource === 'none' || stat.probMarket === null) {
+                marketCell = 'no price';
+            } else {
+                marketCell = `${stat.probMarket}%`;
+                if (stat.marketSource === 'one-sided (de-vigged)') {
+                    marketCell += ` (one-sided, ÷${escapeHtml(stat.overround)})`;
+                } else if (stat.marketSource === 'no-vig (cross-book)') {
+                    marketCell += ' (cross-book)';
+                }
+            }
+            const edgeCell = (stat.edgePts === null || stat.edgePts === undefined) ? '-'
+                : `${stat.edgePts > 0 ? '+' : ''}${stat.edgePts}` + (stat.edgeSource === 'price only' ? ' (price only)' : '');
+            const rowTitle = stat.flagged ? '' : ` title="${escapeHtml(stat.noFlagReason)}"`;
+            const rowStyle = stat.flagged ? ' style="background: rgba(76,175,80,0.15);"' : '';
+            const key = `${player}|${stat.stat}|${stat.line}`;
+
+            html += `
+                <tr class="v2-row" data-key="${escapeHtml(key)}" data-flagged="${stat.flagged}"${rowTitle}${rowStyle}>
+                    <td style="color: #ffcc02; font-weight: bold;">${stat.stat}</td>
+                    <td>${avgCell}</td>
+                    <td>${adjustedValue}</td>
+                    <td>${adjustmentDisplay}</td>
+                    <td style="font-weight: bold;">${isTd ? '-' : stat.line}</td>
+                    <td>${escapeHtml(stat.side)}</td>
+                    <td>${priceCell}</td>
+                    <td>${stat.probModel}%</td>
+                    <td>${marketCell}</td>
+                    <td style="font-weight: bold;">${stat.probFinal}%</td>
+                    <td>${edgeCell}</td>
+                </tr>
+            `;
+        });
+
+        html += '</tbody></table>';
+        html += '<div id="game-content_' + playerId + '" style="margin-top: 15px;"></div>';
+        html += '</div></div>';
+
+        setTimeout(() => renderPlayerGameInfo(player, playerId), 100);
+
+        return html;
+    }
+
     function togglePlayer(playerId) {
         const content = document.getElementById(`content_${playerId}`);
         const arrow = document.getElementById(`arrow_${playerId}`);
