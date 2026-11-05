@@ -1,13 +1,17 @@
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, Request, Depends
 from fastapi.staticfiles import StaticFiles
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, JSONResponse
 from pathlib import Path
+from pydantic import BaseModel, Field
 from sqlalchemy import create_engine, text
 from sqlalchemy.exc import SQLAlchemyError
 import pandas as pd
 from Odds_vs_Stats_Check import check_stat_against_odds
+import ipaddress
 import logging
 import os
+import time
+import refresh_jobs
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
@@ -95,6 +99,102 @@ def debug_odds(player_name: str):
 # Mount static files: only the dedicated static/ folder (never the project root,
 # which holds the DB, .env and source)
 app.mount("/static", StaticFiles(directory=BASE_DIR / "static"), name="static")
+
+
+# ---------------------------
+# Refresh buttons (stats / odds). Loopback only unless ALLOW_REMOTE_REFRESH=1.
+# ---------------------------
+LOCAL_HOSTNAMES = {"127.0.0.1", "localhost", "::1"}
+FORBIDDEN_MESSAGE = ("Refresh actions are only allowed from the computer running the server. "
+                     "Set ALLOW_REMOTE_REFRESH=1 to allow LAN use.")
+
+
+class RefreshForbidden(Exception):
+    def __init__(self, message=FORBIDDEN_MESSAGE):
+        self.message = message
+
+
+@app.exception_handler(RefreshForbidden)
+def _refresh_forbidden_handler(request: Request, exc: RefreshForbidden):
+    return JSONResponse(status_code=403, content={"error": "forbidden", "message": exc.message})
+
+
+def _is_loopback(host) -> bool:
+    try:
+        ip = ipaddress.ip_address(host)
+    except (ValueError, TypeError):
+        return False
+    if ip.is_loopback:
+        return True
+    return ip.version == 6 and ip.ipv4_mapped is not None and ip.ipv4_mapped.is_loopback
+
+
+def _host_header_name(value) -> str:
+    host = (value or "").strip().lower()
+    if host.startswith("["):  # [::1]:8000
+        return host[1:host.find("]")] if "]" in host else host
+    if host.count(":") == 1:  # 127.0.0.1:8000
+        return host.split(":", 1)[0]
+    return host
+
+
+def require_local_refresh(request: Request):
+    """Gate for refresh endpoints. X-Forwarded-For is never trusted."""
+    client_host = request.client.host if request.client else None
+    # A custom header forces a CORS preflight, so other web pages can't trigger POSTs
+    if request.method == "POST" and request.headers.get("x-nfl-refresh") != "1":
+        logger.warning(f"Refresh request without X-NFL-Refresh header from {client_host}")
+        raise RefreshForbidden("Missing X-NFL-Refresh header.")
+    if os.getenv("ALLOW_REMOTE_REFRESH") == "1":
+        return
+    if not _is_loopback(client_host) or _host_header_name(request.headers.get("host")) not in LOCAL_HOSTNAMES:
+        logger.warning(f"Rejected refresh request from {client_host}")
+        raise RefreshForbidden()
+
+
+class OddsConfirm(BaseModel):
+    confirm_games: int = Field(ge=0, le=64)
+
+
+def _start_job(step, fn, *args):
+    job, busy = refresh_jobs.RUNNER.start(step, fn, *args)
+    if busy:
+        return JSONResponse(status_code=409, content=busy)
+    return JSONResponse(status_code=202, content={k: job[k] for k in ("job_id", "step", "status", "started_at")})
+
+
+@app.post("/refresh/stats", dependencies=[Depends(require_local_refresh)])
+def refresh_stats():
+    """Reload the last completed week from Sleeper and re-scrape team stats (background job)."""
+    return _start_job("stats", refresh_jobs.run_stats_job)
+
+
+@app.get("/refresh/odds/preview", dependencies=[Depends(require_local_refresh)])
+def refresh_odds_preview():
+    """Free: upcoming games, estimated credits and remaining quota."""
+    try:
+        return refresh_jobs.odds_preview()
+    except refresh_jobs.NoApiKeys as e:
+        return JSONResponse(status_code=503, content={"error": "no_api_keys", "message": str(e)})
+    except Exception as e:
+        import odds_api
+        message = odds_api.redact(str(e))
+        logger.error(f"Odds preview failed: {message}")
+        return JSONResponse(status_code=502, content={"error": "events_failed", "message": message})
+
+
+@app.post("/refresh/odds", dependencies=[Depends(require_local_refresh)])
+def refresh_odds(body: OddsConfirm):
+    """Paid: fetch odds for at most the confirmed number of games (background job)."""
+    return _start_job("odds", refresh_jobs.run_odds_job, body.confirm_games)
+
+
+@app.get("/refresh/status")
+def refresh_status():
+    last_runs = refresh_jobs.STATE.load().get("last_runs", {})
+    return {"running": refresh_jobs.RUNNER.is_running(),
+            "job": refresh_jobs.RUNNER.snapshot(),
+            "last_runs": {s: last_runs.get(s) for s in refresh_jobs.STEPS}}
 
 @app.get("/players")
 @app.get("/players/")
@@ -421,6 +521,13 @@ def get_team_stats(team_abbrev: str):
 @app.get("/generate-picks")
 def generate_picks():
     """Run the configured model (v1 or v2) and return its picks plus model info"""
+    t0 = time.monotonic()
+    response = _generate_picks_response()
+    _record_picks_run(response, round(time.monotonic() - t0, 1))
+    return response
+
+
+def _generate_picks_response():
     from model_v2 import ParamsError
     try:
         from test_thresholds import get_picks_with_model
@@ -439,6 +546,21 @@ def generate_picks():
         import traceback
         traceback.print_exc()
         return {"success": False, "error": str(e)}
+
+
+def _record_picks_run(response, duration_s):
+    """Save the picks last-run for the page. Never changes or breaks the picks response."""
+    try:
+        if response.get("success"):
+            model = response.get("model") or {}
+            version = model.get("version", "v1")
+            rows = [r for p in response["players"] for r in (p.get("stats") or [])]
+            flagged = sum(1 for r in rows if r.get("flagged")) if version == "v2" else len(rows)
+            refresh_jobs.record_picks_run(True, response["count"], flagged, version, duration_s=duration_s)
+        else:
+            refresh_jobs.record_picks_run(False, 0, 0, None, error=response.get("error"), duration_s=duration_s)
+    except Exception as e:
+        logger.warning(f"Could not record picks run: {e}")
 
 @app.get("/thresholds/player/{player_name}/year/{year}")
 def test_thresholds(player_name: str, year: int):
