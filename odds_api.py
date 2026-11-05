@@ -167,7 +167,8 @@ def call_odds_api(url, params, max_retries=2):
 # -------------------------------
 # Save odds to DB
 # -------------------------------
-def save_odds(player_name, event_id, event_name, bookmaker, market, line, price, season, week, outcome=None):
+def save_odds(player_name, event_id, event_name, bookmaker, market, line, price, season, week, outcome=None,
+              commence_time=None):
     if not market or not bookmaker:
         logger.error("Missing required parameters for save_odds")
         return
@@ -205,6 +206,8 @@ def save_odds(player_name, event_id, event_name, bookmaker, market, line, price,
         if existing:
             existing.line = line
             existing.price = price
+            if commence_time is not None:
+                existing.commence_time = commence_time
         else:
             odds_entry = Odds(
                 player_id=player_id,
@@ -215,6 +218,7 @@ def save_odds(player_name, event_id, event_name, bookmaker, market, line, price,
                 line=line,
                 price=price,
                 outcome=outcome,
+                commence_time=commence_time,
                 season=season,
                 week=week
             )
@@ -345,6 +349,7 @@ def _store_event_odds(event, data, season, week):
                         line=outcome.get("point"),
                         price=outcome.get("price"),
                         outcome=outcome.get("name"),
+                        commence_time=event.get("commence_time"),
                         season=season,
                         week=week
                     )

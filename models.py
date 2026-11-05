@@ -33,6 +33,9 @@ class Odds(Base):
     price = Column(Float)
     # Over/Under/Yes/No or team name, as returned by the API; NULL for rows saved before this column existed
     outcome = Column(String)
+    # ISO UTC kickoff from the Odds API commence_time (e.g. "2026-11-08T18:00:00Z");
+    # NULL for rows saved before this column existed (see backfill_commence_times.py)
+    commence_time = Column(String)
     season = Column(Integer)
     week = Column(Integer)
     season_type = Column(String, default='regular')  # 'regular' or 'playoffs'
@@ -81,8 +84,16 @@ def ensure_odds_outcome_column(engine):
         if columns and "outcome" not in columns:
             conn.execute(text("ALTER TABLE odds ADD COLUMN outcome TEXT"))
 
+def ensure_odds_commence_time_column(engine):
+    """Add commence_time (ISO UTC kickoff) to odds. Idempotent; existing rows stay NULL."""
+    with engine.begin() as conn:
+        columns = [row[1] for row in conn.execute(text("PRAGMA table_info(odds)"))]
+        if columns and "commence_time" not in columns:
+            conn.execute(text("ALTER TABLE odds ADD COLUMN commence_time TEXT"))
+
 # Create tables
 Base.metadata.create_all(engine)
 ensure_season_type_columns(engine)
 ensure_weekly_stats_gp_column(engine)
 ensure_odds_outcome_column(engine)
+ensure_odds_commence_time_column(engine)
