@@ -27,6 +27,15 @@ Player stats are adjusted based on opponent defensive performance vs league aver
 Adjusted Stat = Player 3-Game Average × (Opponent Defense Stat ÷ League Average Defense Stat)
 ```
 
+#### Weather
+Display only: weather changes the "Adjusted" value and its explanation, never the flag rule or the probability.
+- **Source**: [Open-Meteo](https://open-meteo.com) (free, no API key). Forecast API for upcoming and recent games, historical archive API for older games. Values are for the hour nearest kickoff: temperature (°C), wind (km/h) and the WMO weather code, mapped to a condition (rain/snow trigger the precipitation factor).
+- **Location**: the home team's stadium from `stadiums.py` (home = first team in the odds event name, "Home vs Away"). Dome and retractable-roof stadiums get no weather adjustment.
+- **Kickoff time**: `odds.commence_time`, saved on every odds fetch. For rows saved before that column existed, `backfill_commence_times.py` fills it from the free `/events` endpoint (0 credits; only upcoming/live games are listed, so older weeks stay without a kickoff time and get no weather adjustment).
+- **Caching**: in memory per (home team, kickoff hour): past games for the server's lifetime, forecasts for 1 hour, failures for 10 minutes. Any failure (network, missing data, unknown team, no kickoff time) is neutral and logged as a warning.
+- **Known limitation**: neutral-site and international games can't be detected from the odds data (no venue), so they use the designated home team's stadium.
+- **Thresholds**: the factors in `weather_adjustments.py` are unchanged. They look aggressive (windy from 15 km/h, cold below 10 °C); consider higher wind thresholds (about 25/40 km/h) and a smaller cold penalty, calibrated against backtests.
+
 #### Opportunity Adjustments
 - **Reception Share**: Calculates player's share of team receptions as proxy for target share
 - **Game Script**: Adjusts projections based on spread (favorites run more, underdogs pass more)

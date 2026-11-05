@@ -239,7 +239,7 @@ def get_odds_for_player(player_display_name: str, season=None, week=None):
             
             for name_variant in name_variations:
                 result = conn.execute(text("""
-                    SELECT market, line, bookmaker, event_name, price, outcome
+                    SELECT market, line, bookmaker, event_name, price, outcome, commence_time
                     FROM odds
                     WHERE player_id = :custom_id
                     AND season = :season
@@ -276,7 +276,7 @@ def collapse_odds(rows):
         key = (r.get("market"), r.get("bookmaker"), r.get("line"))
         entry = entries.setdefault(key, {
             "market": r.get("market"), "line": r.get("line"), "bookmaker": r.get("bookmaker"),
-            "event_name": r.get("event_name"), "prices": {},
+            "event_name": r.get("event_name"), "commence_time": r.get("commence_time"), "prices": {},
         })
         entry["prices"][outcome or "unknown"] = r.get("price")
     return list(entries.values())
@@ -324,7 +324,7 @@ def compute_adjustments(conn, player_id, player_stats, odds, season):
     opponent can't be matched exactly. Never feeds the flag rule or probability.
     """
     from team_stats import build_adjustment, MATCHUP_BETA
-    from teams import ABBR_TO_FULL, find_opponent
+    from teams import find_opponent
     from weather_adjustments import get_weather_adjustments, format_weather_explanation
     from weather_api import get_weather_for_game
 
@@ -335,10 +335,12 @@ def compute_adjustments(conn, player_id, player_stats, odds, season):
     if not opponent_abbrev:
         return None, {}
 
-    weather_data = get_weather_for_game(ABBR_TO_FULL[player_team], ABBR_TO_FULL[opponent_abbrev])
+    # Home stadium weather at kickoff (weather_api returns neutral values + a note when unavailable)
+    commence_time = next((o.get('commence_time') for o in odds if o.get('commence_time')), None)
+    weather_data = get_weather_for_game(odds[0]['event_name'], commence_time)
     weather_factors = get_weather_adjustments(
         weather_data['temperature'], weather_data['wind_speed'], weather_data['conditions'])
-    weather_text = format_weather_explanation(
+    weather_text = weather_data.get('note') or format_weather_explanation(
         weather_data['temperature'], weather_data['wind_speed'], weather_data['conditions'])
 
     adjustments = {}
