@@ -1,0 +1,65 @@
+{
+ "version": 2,
+ "window": {
+  "type": "ewma",
+  "half_life": 8,
+  "max_games": 17
+ },
+ "stats": {
+  "passing_yards": {
+   "c": 0.983556,
+   "a": 0.108155,
+   "b": 0.179249,
+   "dist": "lognormal",
+   "k": 0.25,
+   "blend": false
+  },
+  "receiving_yards": {
+   "c": 0.941979,
+   "a": 0.416592,
+   "b": 0.416592,
+   "dist": "lognormal",
+   "k": 0.11,
+   "blend": false
+  },
+  "rushing_yards": {
+   "c": 0.983864,
+   "a": 0.323798,
+   "b": 0.323798,
+   "dist": "normal",
+   "k": 0.25,
+   "blend": true
+  },
+  "receptions": {
+   "c": 0.952275,
+   "a": 0.305082,
+   "b": 0.305082,
+   "dist": "negbin",
+   "k": 0.08,
+   "blend": false
+  },
+  "passing_tds": {
+   "c": 0.951094,
+   "a": 0.515274,
+   "b": 0.668698,
+   "dist": "negbin",
+   "k": 0.25,
+   "blend": false
+  }
+ },
+ "td": {
+  "n0": 4,
+  "lambda0": {
+   "QB": 0.186275,
+   "RB": 0.328139,
+   "WR": 0.18219,
+   "TE": 0.147462,
+   "ALL": 0.208911
+  },
+  "k": 0.0,
+  "o": 1.1987
+ },
+ "o_ou": 1.064,
+ "fitted_on": "proxy 2025 wk4-17 + 2026 wk2-7; O/U k: 2025 wk14-16 odds; TD: 2025 wk14-16 odds",
+ "gate_label": "passed"
+}
