@@ -121,7 +121,7 @@ No schema change and no real-DB write was made, so no new backup was needed. The
 ## Limitations
 
 - No stored Over/Under price has a known side, so O/U market anchoring and edges can't be tested against real two-way prices yet. Live O/U flags will stay at 0 until you re-fetch odds.
-- The real test is small: 461 player-stats, most of them from wk16. v2's gain over 50/50 is within noise.
+- The real test is small: 426 player-stats, most of them from wk16. v2's gain over 50/50 is within noise.
 - The pooled CV understates spread for low-volume players. SD(z) on the proxies is 1.16-1.32.
 - TD flags are line shopping (model weight 0). They are real only if you can bet at the named book.
 - `player_rush_attempts` isn't modelled, because there is no attempts column.
