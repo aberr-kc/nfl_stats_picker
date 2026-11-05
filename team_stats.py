@@ -14,7 +14,7 @@ from teams import ALL_ABBRS, TEAMRANKINGS_TO_ABBR
 
 logger = logging.getLogger(__name__)
 
-TEAM_STATS_PATH = Path(__file__).resolve().parent / "team_stats_data.json"
+TEAM_STATS_PATH = Path(os.getenv("NFL_TEAM_STATS_PATH") or (Path(__file__).resolve().parent / "team_stats_data.json"))
 
 BASE_URL = "https://www.teamrankings.com/nfl/stat/"
 # TeamRankings page slug -> key stored in team_stats_data.json

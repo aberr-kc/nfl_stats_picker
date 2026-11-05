@@ -1,49 +1,83 @@
 # save_to_db.py
 import sqlite3
-from sqlalchemy import create_engine
-from sqlalchemy.orm import sessionmaker
 from sqlalchemy.exc import SQLAlchemyError
-from models import Base, Player, Odds
+# models owns the DB location (honours NFL_STATS_DB) and creates the tables
+from models import Player, Odds, engine, Session, DB_PATH
 from fetch_stats import fetch_weekly_stats_sleeper as fetch_weekly_stats
+
+UNIQUE_INDEX = "ux_player_weekly_stats_key"
+
+
+def _create_unique_index(conn):
+    """Enforce one row per (player_id, season, week, season_type). Warn if old duplicates block it."""
+    try:
+        conn.execute(
+            f"CREATE UNIQUE INDEX IF NOT EXISTS {UNIQUE_INDEX} "
+            "ON player_weekly_stats(player_id, season, week, season_type)"
+        )
+    except sqlite3.IntegrityError as e:
+        print(f"⚠️ Could not create unique index {UNIQUE_INDEX} (existing duplicate rows): {e}")
 
 
 # --- Pandas direct save for stats ---
-def save_stats_to_db(year: int, week: int, season_type: str = 'regular'):
+def save_stats_to_db(year: int, week: int, season_type: str = 'regular', db_path=None):
     """
     Fetch weekly stats from Sleeper API and save to SQLite DB.
-    Automatically deletes existing rows for that season/week/season_type before inserting.
-    
+    Replaces the rows for that season/week/season_type in one transaction, so
+    reruns never duplicate rows and a failed insert keeps the old rows.
+
     Args:
         year: Season year
         week: Week number
         season_type: 'regular' or 'playoffs'
+        db_path: SQLite file (default: models.DB_PATH)
+
+    Returns:
+        dict with season, week, season_type, rows_saved, rows_replaced, fetched
     """
+    summary = {"season": year, "week": week, "season_type": season_type,
+               "rows_saved": 0, "rows_replaced": 0, "fetched": 0}
     df = fetch_weekly_stats(year, week, season_type)
     if df.empty:
         print(f"⚠️ No {season_type} stats fetched for Week {week}, {year}")
-        return
+        return summary
+
+    df = df.drop_duplicates(subset=["player_id"], keep="last")
 
     conn = None
     try:
-        conn = sqlite3.connect("nfl_stats.db")
+        conn = sqlite3.connect(str(db_path or DB_PATH))
         cursor = conn.cursor()
 
-        # Add season_type column if it doesn't exist
-        try:
-            cursor.execute("ALTER TABLE player_weekly_stats ADD COLUMN season_type TEXT DEFAULT 'regular'")
+        table_exists = cursor.execute(
+            "SELECT 1 FROM sqlite_master WHERE type='table' AND name='player_weekly_stats'"
+        ).fetchone() is not None
+
+        if table_exists:
+            # Add season_type / gp columns if they don't exist (DBs from an older to_sql)
+            for ddl in ("ALTER TABLE player_weekly_stats ADD COLUMN season_type TEXT DEFAULT 'regular'",
+                        "ALTER TABLE player_weekly_stats ADD COLUMN gp REAL"):
+                try:
+                    cursor.execute(ddl)
+                    conn.commit()
+                except sqlite3.OperationalError:
+                    pass  # Column already exists
+            _create_unique_index(conn)
             conn.commit()
-        except sqlite3.OperationalError:
-            pass  # Column already exists
 
-        # Delete existing rows for this season/week/season_type to avoid duplicates
-        cursor.execute(
-            "DELETE FROM player_weekly_stats WHERE season = ? AND week = ? AND season_type = ?",
-            (year, week, season_type)
-        )
-        conn.commit()
+        # One transaction: delete the week, insert fresh rows, commit together
+        # (pandas commits on success and rolls back on failure, which covers the DELETE too)
+        rows_replaced = 0
+        if table_exists:
+            cursor.execute(
+                "DELETE FROM player_weekly_stats WHERE season = ? AND week = ? AND season_type = ?",
+                (year, week, season_type)
+            )
+            rows_replaced = cursor.rowcount
 
-        # Append fresh rows
         df.to_sql("player_weekly_stats", conn, if_exists="append", index=False)
+        if not table_exists:
+            _create_unique_index(conn)
 
         # Count inserted rows
         cursor.execute(
@@ -51,7 +85,10 @@ def save_stats_to_db(year: int, week: int, season_type: str = 'regular'):
             (year, week, season_type)
         )
         row_count = cursor.fetchone()[0]
+        conn.commit()
         print(f"✅ Saved {row_count} rows to player_weekly_stats for {season_type} Week {week}, {year}")
+        summary.update(rows_saved=row_count, rows_replaced=max(rows_replaced, 0), fetched=len(df))
+        return summary
     except Exception as e:
         print(f"❌ Error saving {season_type} stats to DB: {e}")
         if conn:
@@ -60,12 +97,6 @@ def save_stats_to_db(year: int, week: int, season_type: str = 'regular'):
     finally:
         if conn:
             conn.close()
-
-
-# --- SQLAlchemy setup for odds ---
-engine = create_engine("sqlite:///nfl_stats.db")
-Base.metadata.create_all(engine)
-Session = sessionmaker(bind=engine)
 
 
 def save_player_if_not_exists(player_name, session):

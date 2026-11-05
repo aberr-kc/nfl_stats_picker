@@ -1,12 +1,15 @@
 # models.py - SQLAlchemy database models
 
+import os
 from pathlib import Path
 from sqlalchemy import create_engine, Column, String, Integer, Float, DateTime, text
 from sqlalchemy.orm import declarative_base, sessionmaker
 from datetime import datetime, timezone
 
-# Create engine and base (absolute path so imports from another cwd don't create a stray DB)
-DB_PATH = Path(__file__).resolve().parent / "nfl_stats.db"
+# Create engine and base (absolute path so imports from another cwd don't create a stray DB).
+# NFL_STATS_DB overrides the location (same variable app.py and test_thresholds.py read).
+DB_PATH = (Path(os.environ["NFL_STATS_DB"]).resolve() if os.getenv("NFL_STATS_DB")
+           else Path(__file__).resolve().parent / "nfl_stats.db")
 engine = create_engine(f"sqlite:///{DB_PATH.as_posix()}")
 Base = declarative_base()
 Session = sessionmaker(bind=engine)
