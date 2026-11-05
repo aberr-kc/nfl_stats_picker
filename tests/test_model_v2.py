@@ -70,15 +70,16 @@ class TestConfig(unittest.TestCase):
         with mock.patch.dict(os.environ, {}, clear=False):
             os.environ.pop("NFL_MODEL_VERSION", None)
             cfg = test_thresholds.read_config_from_file()
-        self.assertEqual(cfg["MODEL_VERSION"], "v1")
+        # switched to 'v2' after the backtest gate passed (commit "feat: switch live picks to model v2")
+        self.assertEqual(cfg["MODEL_VERSION"], "v2")
         self.assertEqual(cfg["V2_EDGE_MARGIN"], 0.03)
         self.assertEqual(cfg["V2_MIN_GAMES_FOR_FLAG"], 3)
 
     def test_env_override(self):
         import test_thresholds
-        with mock.patch.dict(os.environ, {"NFL_MODEL_VERSION": "v2"}):
+        with mock.patch.dict(os.environ, {"NFL_MODEL_VERSION": "v1"}):
             cfg = test_thresholds.read_config_from_file()
-        self.assertEqual(cfg["MODEL_VERSION"], "v2")
+        self.assertEqual(cfg["MODEL_VERSION"], "v1")
 
     def test_engine_uses_nfl_stats_db(self):
         import test_thresholds

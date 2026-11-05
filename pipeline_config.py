@@ -75,7 +75,7 @@ THRESHOLDS = {
 # (calibrated model anchored to the market, see model_v2.py). Switched to 'v2'
 # only in a separate commit after backtest.py's gate passes and
 # model_v2_params.json is written. NFL_MODEL_VERSION overrides it.
-MODEL_VERSION = 'v1'
+MODEL_VERSION = 'v2'
 # v2 flag policy: minimum edge (probability points / 100) over the
 # vig-inclusive price, and minimum games played in the window.
 V2_EDGE_MARGIN = 0.03
