@@ -168,6 +168,40 @@
             font-weight: bold !important;
             color: #ffcc02 !important;
         }
+
+        /* Weekly workflow: refresh stats / fetch odds / generate picks */
+        #refresh-panel {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 15px;
+            margin-top: 15px;
+            position: relative;
+        }
+        .refresh-step {
+            display: flex;
+            flex-direction: column;
+            gap: 6px;
+            max-width: 340px;
+        }
+        .refresh-step button:disabled {
+            opacity: 0.6;
+            cursor: not-allowed !important;
+        }
+        .step-status {
+            font-size: 12px;
+            color: #eee;
+        }
+        #refresh-message {
+            color: #ff6b35;
+            background: rgba(0, 0, 0, 0.6);
+            border-radius: 6px;
+            margin-top: 10px;
+            position: relative;
+            white-space: pre-wrap;
+        }
+        #refresh-message:not(:empty) {
+            padding: 8px 12px;
+        }
         
 
     </style>
@@ -184,7 +218,21 @@
         <label for="playerSelect">Player:</label>
         <input type="text" id="playerSelect" list="playerList" placeholder="Type player name..." autocomplete="off">
         <datalist id="playerList"></datalist>
-        <button id="generatePicks" style="padding: 12px 20px; margin-left: 15px; background: linear-gradient(135deg, #ffcc02 0%, #d50a0a 100%); color: white; border: none; border-radius: 8px; font-weight: bold; cursor: pointer; transition: all 0.3s ease;">Generate Picks</button>
+        <div id="refresh-panel">
+            <div class="refresh-step">
+                <button id="refreshStats" style="padding: 12px 20px; background: linear-gradient(135deg, #2e7d32 0%, #013369 100%); color: white; border: none; border-radius: 8px; font-weight: bold; cursor: pointer; transition: all 0.3s ease;">1. Refresh stats (free)</button>
+                <div id="status-stats" class="step-status">Never run</div>
+            </div>
+            <div class="refresh-step">
+                <button id="fetchOdds" style="padding: 12px 20px; background: linear-gradient(135deg, #ff6b35 0%, #8e24aa 100%); color: white; border: none; border-radius: 8px; font-weight: bold; cursor: pointer; transition: all 0.3s ease;">2. Fetch odds (uses credits)</button>
+                <div id="status-odds" class="step-status">Never run</div>
+            </div>
+            <div class="refresh-step">
+                <button id="generatePicks" style="padding: 12px 20px; background: linear-gradient(135deg, #ffcc02 0%, #d50a0a 100%); color: white; border: none; border-radius: 8px; font-weight: bold; cursor: pointer; transition: all 0.3s ease;">3. Generate picks</button>
+                <div id="status-picks" class="step-status">Never run</div>
+            </div>
+        </div>
+        <div id="refresh-message" role="alert"></div>
     </div>
 
     <div class="grid-container">
@@ -272,6 +320,9 @@
         });
         
         document.getElementById('generatePicks').addEventListener('click', generatePicks);
+        document.getElementById('refreshStats').addEventListener('click', refreshStats);
+        document.getElementById('fetchOdds').addEventListener('click', fetchOdds);
+        loadRefreshStatus();
     });
 
     async function fetchPlayerStats(player, year) {
@@ -725,6 +776,197 @@
         renderPicks();
     }
     
+    // ---- Weekly workflow buttons: 1. refresh stats, 2. fetch odds, 3. generate picks ----
+    let refreshPollingJob = null;   // job_id being polled (one poller at a time)
+
+    function stepButtons() {
+        return {
+            stats: ['refreshStats', '1. Refresh stats (free)'],
+            odds: ['fetchOdds', '2. Fetch odds (uses credits)'],
+            picks: ['generatePicks', '3. Generate picks'],
+        };
+    }
+
+    function refreshHeaders() {
+        return { 'Content-Type': 'application/json', 'X-NFL-Refresh': '1' };
+    }
+
+    function formatLastRun(run) {
+        if (!run) return 'Never run';
+        const when = run.finished_at ? new Date(run.finished_at).toLocaleString() : 'unknown time';
+        const ok = run.status === 'succeeded';
+        let html = `Last run: ${escapeHtml(when)} · ` +
+            (ok ? `✓ ${escapeHtml(run.summary || 'done')}` : `✗ ${escapeHtml(run.error || run.summary || 'failed')}`);
+        for (const w of (run.warnings || [])) html += `<br>⚠ ${escapeHtml(w)}`;
+        return html;
+    }
+
+    function setRefreshButtonsDisabled(disabled, runningStep) {
+        const buttons = stepButtons();
+        for (const step of Object.keys(buttons)) {
+            const btn = document.getElementById(buttons[step][0]);
+            if (!btn) continue;
+            btn.disabled = !!disabled;
+            btn.textContent = (disabled && step === runningStep) ? `Running ${step}…` : buttons[step][1];
+        }
+    }
+
+    function renderRefreshStatus(status) {
+        const runs = (status && status.last_runs) || {};
+        for (const step of ['stats', 'odds', 'picks']) {
+            const el = document.getElementById(`status-${step}`);
+            if (el) el.innerHTML = formatLastRun(runs[step]);
+        }
+        const job = status && status.job;
+        setRefreshButtonsDisabled(!!(status && status.running), job ? job.step : null);
+    }
+
+    function showRefreshError(msg) {
+        const el = document.getElementById('refresh-message');
+        if (el) el.textContent = msg;
+    }
+
+    function clearRefreshError() {
+        const el = document.getElementById('refresh-message');
+        if (el) el.textContent = '';
+    }
+
+    function describeHttpError(res, body) {
+        body = body || {};
+        if (res.status === 403) {
+            return 'Refresh is only allowed from the computer running the server (set ALLOW_REMOTE_REFRESH=1 to allow LAN use).';
+        }
+        if (res.status === 409) return `Another refresh (${body.running_step || 'job'}) is already running.`;
+        if (body.message || body.error) return String(body.message || body.error);
+        if (body.detail) return `Request rejected (${res.status}): ${JSON.stringify(body.detail)}`;
+        return `Request failed (HTTP ${res.status}).`;
+    }
+
+    async function loadRefreshStatus() {
+        try {
+            const res = await fetch('/refresh/status');
+            const status = await res.json();
+            renderRefreshStatus(status);
+            if (status.running && status.job) pollRefreshStatus(status.job.job_id);
+            return status;
+        } catch (err) {
+            console.error('Error loading refresh status:', err);
+            return null;
+        }
+    }
+
+    function pollRefreshStatus(jobId) {
+        if (refreshPollingJob === jobId) return;
+        refreshPollingJob = jobId;
+        const tick = async () => {
+            let status;
+            try {
+                const res = await fetch('/refresh/status');
+                status = await res.json();
+            } catch (err) {
+                refreshPollingJob = null;
+                showRefreshError(`Lost contact with the server while a refresh was running: ${err.message || err}`);
+                setRefreshButtonsDisabled(false);
+                return;
+            }
+            const job = status.job;
+            if (status.running && job && job.job_id === jobId) {
+                renderRefreshStatus(status);
+                setTimeout(tick, 1500);
+                return;
+            }
+            refreshPollingJob = null;
+            renderRefreshStatus(status);
+            if (!job) {
+                showRefreshError('The refresh job is no longer running (was the server restarted?). Check the last-run status.');
+            } else if (job.job_id === jobId && job.status === 'failed') {
+                showRefreshError(`${job.step === 'odds' ? 'Fetch odds' : 'Refresh stats'} failed: ${job.error}`);
+            } else if (job.job_id === jobId) {
+                clearRefreshError();
+            }
+            if (status.running && job) pollRefreshStatus(job.job_id);
+        };
+        tick();
+    }
+
+    async function startRefresh(step, url, body) {
+        clearRefreshError();
+        setRefreshButtonsDisabled(true, step);
+        let res;
+        let data = {};
+        try {
+            const opts = { method: 'POST', headers: refreshHeaders() };
+            if (body !== undefined) opts.body = JSON.stringify(body);
+            res = await fetch(url, opts);
+            try { data = await res.json(); } catch (e) { data = {}; }
+        } catch (err) {
+            showRefreshError(`Could not reach the server: ${err.message || err}`);
+            setRefreshButtonsDisabled(false);
+            return;
+        }
+        if (res.status === 202) {
+            pollRefreshStatus(data.job_id);
+            return;
+        }
+        showRefreshError(describeHttpError(res, data));
+        if (res.status === 409 && data.job_id) {
+            setRefreshButtonsDisabled(true, data.running_step);
+            pollRefreshStatus(data.job_id);
+            return;
+        }
+        setRefreshButtonsDisabled(false);
+    }
+
+    function refreshStats() {
+        return startRefresh('stats', '/refresh/stats');
+    }
+
+    function buildOddsConfirmText(p) {
+        const q = p.quota || {};
+        const known = q.total_remaining !== null && q.total_remaining !== undefined;
+        const regions = p.regions || 1;
+        const lines = [`Fetch odds for ${p.game_count} upcoming games (next ${p.days_ahead} days)?`];
+        for (const g of (p.games || []).slice(0, 16)) {
+            lines.push(`  ${g.away_team} @ ${g.home_team} (${new Date(g.commence_time).toLocaleString()})`);
+        }
+        lines.push('',
+            `Estimated cost: up to ${p.estimated_credits} credits (${p.game_count} games × ${p.markets} markets × ${regions} region${regions === 1 ? '' : 's'}).`,
+            known ? `Remaining quota: ${q.total_remaining} credits (${q.source || 'unknown'}).` : 'Remaining quota: unknown');
+        if (p.enough_quota === false) lines.push('WARNING: estimate exceeds remaining quota.');
+        lines.push('', 'This spends paid Odds API credits.');
+        return lines.join('\n');
+    }
+
+    async function fetchOdds() {
+        clearRefreshError();
+        setRefreshButtonsDisabled(true, 'odds');
+        let res;
+        let p = {};
+        try {
+            res = await fetch('/refresh/odds/preview', { headers: refreshHeaders() });
+            try { p = await res.json(); } catch (e) { p = {}; }
+        } catch (err) {
+            showRefreshError(`Could not get the odds preview: ${err.message || err}`);
+            setRefreshButtonsDisabled(false);
+            return;
+        }
+        if (!res.ok) {
+            showRefreshError(describeHttpError(res, p));
+            setRefreshButtonsDisabled(false);
+            return;
+        }
+        if (p.game_count === 0) {
+            showRefreshError(`No games in the next ${p.days_ahead} days; nothing to fetch.`);
+            setRefreshButtonsDisabled(false);
+            return;
+        }
+        if (!window.confirm(buildOddsConfirmText(p))) {
+            setRefreshButtonsDisabled(false);
+            return;
+        }
+        await startRefresh('odds', '/refresh/odds', { confirm_games: p.game_count });
+    }
+
     async function generatePicks() {
         const button = document.getElementById('generatePicks');
         const picksSection = document.querySelector('.picks-section');
@@ -736,6 +978,7 @@
         currentPage = 0;
         
         // Show loading state
+        setRefreshButtonsDisabled(true, 'picks');
         button.textContent = 'Generating...';
         button.disabled = true;
         picksSection.style.display = 'block';
@@ -766,8 +1009,10 @@
             console.error('Error generating picks:', err);
             picksContainer.innerHTML = '<div style="color: #ff6b35; padding: 20px;">Error generating picks</div>';
         } finally {
-            button.textContent = 'Generate Picks';
+            button.textContent = '3. Generate picks';
             button.disabled = false;
+            setRefreshButtonsDisabled(false);
+            loadRefreshStatus();
         }
     }
     
