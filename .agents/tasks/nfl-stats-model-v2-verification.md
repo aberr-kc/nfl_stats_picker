@@ -29,3 +29,10 @@
 - v2 with a missing params file: `success: false`, "Model v2 parameters invalid: not found: ...". PASS.
 - `NFL_MODEL_VERSION=v9`: `success: false`, "MODEL_VERSION must be 'v1' or 'v2'". PASS.
 - v1: `success: true`, 6 players, `model == {"version": "v1"}`. PASS.
+
+## Items 9-10. backtest.py
+
+- `backtest.py --out %TEMP%\nfl_backtest\dev2 --matchup-experiment %TEMP%\nflmath\sched2025.json` (cwd %TEMP%): exit 0, gate passed. A second run (dev3, same seed) gives an identical report.md apart from the header line (output folder): `Compare-Object` shows only that line.
+- `backtest.py --write-params` (no target): exit 6, "--production-target SEASON-WEEK required".
+- Repo DB SHA256 after the runs equals H0; `model_v2_params.json` not present in the repo.
+- Deviation recorded: `fit_cv` refits on the iid floor b = a when the unconstrained intercept a <= 0 (as for b < a); only a non-positive floor fit is fatal (exit 5). Without this, a candidate window's passing-yards fit on fold A (147 cases) gave a = -0.008 and the harness could not run.

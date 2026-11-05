@@ -498,5 +498,52 @@ class TestEvaluateWeekErrors(unittest.TestCase):
             test_thresholds.evaluate_week(2026, 8, "v2", dict(CONFIG, V2_EDGE_MARGIN=0.5), params=valid_params())
 
 
+class TestBacktestHelpers(unittest.TestCase):
+    def test_z(self):
+        import backtest
+        self.assertAlmostEqual(backtest.z_for_level(1), 1.960, delta=0.001)
+        self.assertAlmostEqual(backtest.z_for_level(6), 2.638, delta=0.001)
+
+    def test_wilson(self):
+        import backtest
+        lo, hi = backtest.wilson(30, 50, 1.96)
+        self.assertAlmostEqual(lo, 0.462, delta=0.001)
+        self.assertAlmostEqual(hi, 0.724, delta=0.001)
+        lo6, hi6 = backtest.wilson(30, 50, backtest.z_for_level(6))
+        self.assertLess(lo6, lo)
+        self.assertGreater(hi6, hi)
+
+    def test_clip_logloss(self):
+        import backtest
+        c = [0]
+        self.assertAlmostEqual(backtest.clip_logloss(0.0, 1, c), -math.log(1e-6))
+        self.assertEqual(c[0], 1)
+
+    def test_fit_cv_floor(self):
+        import backtest
+        # r falls with 1/n (b < 0 unconstrained) -> floor b = a
+        cases = [(0.5 - 0.3 * (1 / n), 1 / n, 1.0) for n in (1, 2, 3, 4, 6, 8, 10, 17) for _ in range(10)]
+        a, b = backtest.fit_cv(cases)
+        self.assertEqual(a, b)
+        self.assertGreater(a, 0)
+        with self.assertRaises(backtest.FitError):
+            backtest.fit_cv(cases[:10])
+
+    def test_fit_test_assert(self):
+        import backtest
+        self.assertTrue(backtest.assert_fit_test(backtest.FIT_TEST))
+        bad = json.loads(json.dumps(backtest.FIT_TEST))
+        bad["ou"]["fit"].append([2025, 14])
+        bad = {k: {kk: [tuple(x) for x in vv] for kk, vv in v.items()} for k, v in bad.items()}
+        with self.assertRaises(AssertionError):
+            backtest.assert_fit_test(bad)
+
+    def test_import_has_no_side_effects(self):
+        import subprocess
+        out = subprocess.run([sys.executable, "-c", "import backtest, sys; print('test_thresholds' in sys.modules)"],
+                             cwd=REPO, capture_output=True, text=True)
+        self.assertEqual(out.stdout.strip(), "False")
+
+
 if __name__ == "__main__":
     unittest.main()
