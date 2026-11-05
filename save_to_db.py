@@ -8,6 +8,14 @@ from fetch_stats import fetch_weekly_stats_sleeper as fetch_weekly_stats
 UNIQUE_INDEX = "ux_player_weekly_stats_key"
 
 
+def _say(msg):
+    """print() that never raises on a non-UTF-8 console/pipe (e.g. server stdout redirected on Windows)."""
+    try:
+        print(msg)
+    except UnicodeEncodeError:
+        print(msg.encode("ascii", "replace").decode("ascii"))
+
+
 def _create_unique_index(conn):
     """Enforce one row per (player_id, season, week, season_type). Warn if old duplicates block it."""
     try:
@@ -16,7 +24,7 @@ def _create_unique_index(conn):
             "ON player_weekly_stats(player_id, season, week, season_type)"
         )
     except sqlite3.IntegrityError as e:
-        print(f"⚠️ Could not create unique index {UNIQUE_INDEX} (existing duplicate rows): {e}")
+        _say(f"⚠️ Could not create unique index {UNIQUE_INDEX} (existing duplicate rows): {e}")
 
 
 # --- Pandas direct save for stats ---
@@ -39,7 +47,7 @@ def save_stats_to_db(year: int, week: int, season_type: str = 'regular', db_path
                "rows_saved": 0, "rows_replaced": 0, "fetched": 0}
     df = fetch_weekly_stats(year, week, season_type)
     if df.empty:
-        print(f"⚠️ No {season_type} stats fetched for Week {week}, {year}")
+        _say(f"⚠️ No {season_type} stats fetched for Week {week}, {year}")
         return summary
 
     df = df.drop_duplicates(subset=["player_id"], keep="last")
@@ -86,11 +94,11 @@ def save_stats_to_db(year: int, week: int, season_type: str = 'regular', db_path
         )
         row_count = cursor.fetchone()[0]
         conn.commit()
-        print(f"✅ Saved {row_count} rows to player_weekly_stats for {season_type} Week {week}, {year}")
+        _say(f"✅ Saved {row_count} rows to player_weekly_stats for {season_type} Week {week}, {year}")
         summary.update(rows_saved=row_count, rows_replaced=max(rows_replaced, 0), fetched=len(df))
         return summary
     except Exception as e:
-        print(f"❌ Error saving {season_type} stats to DB: {e}")
+        _say(f"❌ Error saving {season_type} stats to DB: {e}")
         if conn:
             conn.rollback()
         raise
