@@ -7,3 +7,5 @@ backup_*/
 *.zip
 .DS_Store
 node_modules/
+refresh_state.json
+*.json.tmp

@@ -96,9 +96,27 @@ python pipeline_config.py
 
 ### Start Web Interface
 ```bash
-python app.py
+.\.venv\Scripts\python.exe run_local.py
 ```
 Then visit `http://localhost:8000` to view the interface.
+
+### Weekly workflow
+Start the server with `.\.venv\Scripts\python.exe run_local.py` (binds 127.0.0.1; add `--host 0.0.0.0` to share on your LAN), open `http://localhost:8000` and use the three buttons in order:
+
+1. **Refresh stats (free)**: reloads the last completed week of player stats from Sleeper and re-scrapes TeamRankings team stats. Takes about 15-30 s and is safe to rerun (the week is replaced, never duplicated).
+2. **Fetch odds (uses credits)**: first shows the games in the next `ODDS_DAYS_AHEAD` days, the estimated cost (games × 9 markets × 1 region, an upper bound) and the remaining Odds API quota. Odds are fetched only after you confirm.
+3. **Generate picks**: builds picks from the data already in the DB (no API calls).
+
+Each button shows its last run time and result, saved in `refresh_state.json`. Buttons 1 and 2 only work from the computer running the server unless you set `ALLOW_REMOTE_REFRESH=1`.
+
+Terminal equivalents:
+```bash
+.\.venv\Scripts\python.exe save_to_db.py        # 1. stats (Sleeper)
+.\.venv\Scripts\python.exe team_stats.py        # 1. team stats (TeamRankings)
+.\.venv\Scripts\python.exe odds_api.py          # 2. odds (spends credits, no confirmation)
+.\.venv\Scripts\python.exe test_thresholds.py   # 3. picks (add --json for JSON)
+.\.venv\Scripts\python.exe pipeline_config.py   # all three in a row
+```
 
 ### Generate Picks Only
 ```bash
