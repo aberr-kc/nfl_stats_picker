@@ -23,3 +23,9 @@
 
 - (a) A4 #14 v1 parity: `NFL_MODEL_VERSION=v1 python test_thresholds.py --json` (40.7 s) vs baseline: 55 rows each, 0 baseline-only, 0 edited-only, 0 changed on threshold_rule/probabilityOver/probabilityUnder/player_value. PASS. (No 2026 wk8 row is touched by FR7 or the count-market rule.)
 - (b) v2 smoke with dev params (last 6, c = 1, k = 0.25, not fitted): 26.3 s, 28 players, 106 rows, 0 flagged, no_price 78, excluded_far_line 2, model_errors 0. Josh Jacobs rush 60.5: gamesUsed 6, mean 52.8, P_model(Over) 28.1% (Under 71.9%), final Under 55.5%, marketSource none, reason "no price". With Jacobs in INCOMPLETE_DATA_PLAYERS: 0 Jacobs rows. PASS.
+
+## Item 8. /generate-picks (`checks\item8.py`, calls `app.generate_picks()` on a DB copy)
+
+- v2 with a missing params file: `success: false`, "Model v2 parameters invalid: not found: ...". PASS.
+- `NFL_MODEL_VERSION=v9`: `success: false`, "MODEL_VERSION must be 'v1' or 'v2'". PASS.
+- v1: `success: true`, 6 players, `model == {"version": "v1"}`. PASS.

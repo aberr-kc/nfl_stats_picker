@@ -420,18 +420,20 @@ def get_team_stats(team_abbrev: str):
 
 @app.get("/generate-picks")
 def generate_picks():
-    """Run threshold analysis and return flagged players"""
+    """Run the configured model (v1 or v2) and return its picks plus model info"""
+    from model_v2 import ParamsError
     try:
-        from test_thresholds import get_flagged_players_json_updated
-        flagged_players = get_flagged_players_json_updated()
-        
-        # Add debug info
-        logger.info(f"Generated {len(flagged_players)} flagged players")
-        if flagged_players:
-            sample_player = flagged_players[0]
-            logger.info(f"Sample player: {sample_player.get('player', 'Unknown')} - {sample_player.get('matchup', 'No matchup')}") 
-        
-        return {"success": True, "players": flagged_players, "count": len(flagged_players)}
+        from test_thresholds import get_picks_with_model
+        players, model = get_picks_with_model()
+        logger.info(f"Generated picks for {len(players)} players (model {model.get('version')})")
+        return {"success": True, "players": players, "count": len(players), "model": model}
+    except ParamsError as e:
+        logger.error(f"Model v2 parameters invalid: {e}")
+        return {"success": False,
+                "error": f"Model v2 parameters invalid: {e}. Run backtest.py --write-params or set MODEL_VERSION='v1'."}
+    except SQLAlchemyError as e:
+        logger.error(f"Database error running picks: {e}")
+        return {"success": False, "error": f"Database error: {e}"}
     except Exception as e:
         logger.error(f"Error running threshold analysis: {e}")
         import traceback
