@@ -727,7 +727,10 @@
             }
             for (const statType of Object.keys(groups)) {
                 const rows = groups[statType];
-                const edges = rows.map(r => r.edgePts).filter(e => e !== null && e !== undefined);
+                // Sort key must match the badge: the best flagged row if any, else the best row.
+                const flagged = rows.filter(r => r.flagged);
+                const edges = (flagged.length ? flagged : rows)
+                    .map(r => r.edgePts).filter(e => e !== null && e !== undefined);
                 cards.push({
                     player: playerData.player,
                     matchup: playerData.matchup,
