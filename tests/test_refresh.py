@@ -115,6 +115,49 @@ class TestSaveStats(TempDirMixin, unittest.TestCase):
         self.assertEqual(self._count(8), 3)
 
 
+class TestLoadAll(TempDirMixin, unittest.TestCase):
+    def setUp(self):
+        super().setUp()
+        self.db = os.path.join(self.tmp, "stats.db")
+        self.players = pd.DataFrame([{"player_id": "p1"}])
+
+    def _fake_fetch(self, year, week, season_type="regular", players_df=None):
+        df = _stats_df(week=week)
+        df["season"] = year
+        return df
+
+    def _run(self, current_week):
+        with mock.patch("save_to_db.fetch_players_df", return_value=self.players) as players, \
+                mock.patch("save_to_db.fetch_weekly_stats", side_effect=self._fake_fetch) as fetch:
+            out = save_to_db.load_all_completed_weeks(2026, current_week, db_path=self.db)
+        return out, players, fetch
+
+    def _total(self):
+        with sqlite3.connect(self.db) as conn:
+            return conn.execute("SELECT COUNT(*) FROM player_weekly_stats").fetchone()[0]
+
+    def test_loads_prior_and_completed_weeks_once(self):
+        out, players, fetch = self._run(3)
+        players.assert_called_once()
+        requested = [(c.args[0], c.args[1]) for c in fetch.call_args_list]
+        self.assertEqual(requested, [(2025, w) for w in range(1, 19)] + [(2026, 1), (2026, 2)])
+        self.assertTrue(all(c.kwargs["players_df"] is self.players for c in fetch.call_args_list))
+        self.assertEqual(len(out), 20)
+        self.assertEqual(self._total(), 60)
+        self._run(3)
+        self.assertEqual(self._total(), 60)
+
+    def test_week_one_loads_prior_season_only(self):
+        out, _, fetch = self._run(1)
+        self.assertEqual({c.args[0] for c in fetch.call_args_list}, {2025})
+        self.assertEqual(len(out), 18)
+
+    def test_postseason_week_caps_at_18(self):
+        out, _, fetch = self._run(20)
+        self.assertEqual(max(c.args[1] for c in fetch.call_args_list if c.args[0] == 2026), 18)
+        self.assertEqual(len(out), 36)
+
+
 def _event(i, hours):
     t = (datetime.now(timezone.utc) + timedelta(hours=hours)).isoformat().replace("+00:00", "Z")
     return {"id": f"ev{i}", "home_team": f"Home{i}", "away_team": f"Away{i}", "commence_time": t}
@@ -453,6 +496,15 @@ class TestApi(TempDirMixin, unittest.TestCase):
             with mock.patch.object(refresh_jobs, "record_picks_run", side_effect=OSError("disk")):
                 status2, body2 = call("GET", "/generate-picks")
         self.assertEqual((status2, body2), (status, body))
+
+    def test_generate_picks_without_stats_table(self):
+        empty = create_engine("sqlite:///" + os.path.join(self.tmp, "empty.db"))
+        with mock.patch.object(test_thresholds, "engine", empty):
+            status, body = call("GET", "/generate-picks")
+        empty.dispose()
+        self.assertEqual(status, 200)
+        self.assertFalse(body["success"])
+        self.assertIn("save_to_db.py --all", body["error"])
 
 
 if __name__ == "__main__":

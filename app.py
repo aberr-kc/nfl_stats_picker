@@ -527,6 +527,10 @@ def generate_picks():
     return response
 
 
+NO_STATS_MESSAGE = ("No player stats in the database yet. Run `python save_to_db.py --all` once "
+                    "(first-time setup), then Refresh stats each week.")
+
+
 def _generate_picks_response():
     from model_v2 import ParamsError
     try:
@@ -540,6 +544,8 @@ def _generate_picks_response():
                 "error": f"Model v2 parameters invalid: {e}. Run backtest.py --write-params or set MODEL_VERSION='v1'."}
     except SQLAlchemyError as e:
         logger.error(f"Database error running picks: {e}")
+        if "no such table: player_weekly_stats" in str(e):
+            return {"success": False, "error": NO_STATS_MESSAGE}
         return {"success": False, "error": f"Database error: {e}"}
     except Exception as e:
         logger.error(f"Error running threshold analysis: {e}")
