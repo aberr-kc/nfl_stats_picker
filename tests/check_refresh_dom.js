@@ -94,8 +94,14 @@ async function main() {
         await settle();
         const posts = t.state.calls.filter(c => c.method === 'POST');
         check(posts.length === 0, `(a) ${posts.length} POST(s) sent after cancelling`);
-        check(preview && typeof preview.game_count === 'number', `(a) preview failed: ${JSON.stringify(preview)}`);
-        if (preview && preview.game_count > 0) {
+        const noKeys = !!(preview && preview.error === 'no_api_keys');  // fresh clone without .env
+        check(noKeys || (preview && typeof preview.game_count === 'number'), `(a) preview failed: ${JSON.stringify(preview)}`);
+        if (noKeys) {
+            check(t.state.confirms.length === 0, '(a) confirm shown without API keys');
+            check(t.els['refresh-message'].textContent.includes('No Odds API keys configured'),
+                `(a) no-keys message missing: ${JSON.stringify(t.els['refresh-message'].textContent)}`);
+            console.log(`(a) no API keys: page shows ${JSON.stringify(t.els['refresh-message'].textContent)}`);
+        } else if (preview && preview.game_count > 0) {
             check(t.state.confirms.length === 1, `(a) confirm shown ${t.state.confirms.length} times`);
             const text = t.state.confirms[0] || '';
             check(text.includes(`${preview.game_count} upcoming games`), '(a) confirm lacks the game count');
