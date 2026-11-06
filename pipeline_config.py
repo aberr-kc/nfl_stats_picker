@@ -48,7 +48,7 @@ SEASON, CURRENT_WEEK, CONFIG_SOURCE = _resolve_season_week()
 
 # Odds configuration - use current week
 ODDS_WEEK = CURRENT_WEEK
-ODDS_DAYS_AHEAD = 2
+ODDS_DAYS_AHEAD = 4
 
 # Stats configuration - use previous (last completed) week
 STATS_WEEK = max(CURRENT_WEEK - 1, 1)

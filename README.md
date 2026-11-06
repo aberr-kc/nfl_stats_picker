@@ -36,7 +36,7 @@ Run every command from the project folder. The database path is relative to it.
 **Windows (PowerShell)**
 
 ```powershell
-git clone <repo URL> nfl_stats_project
+git clone https://github.com/aberr-kc/nfl_stats_project-Q-Updates.git nfl_stats_project
 cd nfl_stats_project
 python -m venv .venv
 .\.venv\Scripts\Activate.ps1
@@ -54,7 +54,7 @@ Set-ExecutionPolicy -Scope Process Bypass
 **macOS / Linux (untested)**
 
 ```bash
-git clone <repo URL> nfl_stats_project
+git clone https://github.com/aberr-kc/nfl_stats_project-Q-Updates.git nfl_stats_project
 cd nfl_stats_project
 python3 -m venv .venv
 source .venv/bin/activate
@@ -128,7 +128,7 @@ The last run of each step is shown under the buttons and saved in `refresh_state
 
 Things to know:
 
-- **Odds window.** `ODDS_DAYS_AHEAD` in `pipeline_config.py` sets how many days ahead Fetch odds looks for games, starting now. The committed value is 2. On a Friday, use 4 so that Sunday and Monday games are included.
+- **Odds window.** `ODDS_DAYS_AHEAD` in `pipeline_config.py` sets how many days ahead Fetch odds looks for games, starting now. The committed value is 4, which on a Friday covers the Sunday and Monday games. Lower it (e.g. 2) if you only want the next couple of days.
 - **Season/week override.** If Sleeper is wrong or unreachable, pin both values for one terminal session, for example `$env:NFL_SEASON="2026"; $env:NFL_WEEK="10"` (PowerShell) or `export NFL_SEASON=2026 NFL_WEEK=10` (macOS/Linux, untested), or put them in `.env` for the web app. Set both or neither.
 - **Avoid `python pipeline_config.py`.** It runs stats, odds and picks in one go and spends credits with no confirmation.
 - The bulk `python save_to_db.py --all` is only needed once (or if you delete the database).
