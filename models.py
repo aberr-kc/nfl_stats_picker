@@ -34,7 +34,7 @@ class Odds(Base):
     # Over/Under/Yes/No or team name, as returned by the API; NULL for rows saved before this column existed
     outcome = Column(String)
     # ISO UTC kickoff from the Odds API commence_time (e.g. "2026-11-08T18:00:00Z");
-    # NULL for rows saved before this column existed (see backfill_commence_times.py)
+    # NULL for rows saved before this column existed (those games have no weather adjustment)
     commence_time = Column(String)
     season = Column(Integer)
     week = Column(Integer)
@@ -70,7 +70,7 @@ def ensure_season_type_columns(engine):
 def ensure_weekly_stats_gp_column(engine):
     """Add gp (Sleeper games played) to player_weekly_stats. Idempotent.
 
-    No default: existing rows stay NULL (unknown) until backfill_gp.py runs.
+    No default: rows saved before the column existed stay NULL (unknown).
     """
     with engine.begin() as conn:
         columns = [row[1] for row in conn.execute(text("PRAGMA table_info(player_weekly_stats)"))]
