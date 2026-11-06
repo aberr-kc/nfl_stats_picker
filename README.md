@@ -38,8 +38,6 @@ Display only: weather changes the "Adjusted" value and its explanation, never th
 
 #### Opportunity Adjustments
 - **Reception Share**: Calculates player's share of team receptions as proxy for target share
-- **Game Script**: Adjusts projections based on spread (favorites run more, underdogs pass more)
-- **Variance Scaling**: Adjusts standard deviation based on opportunity changes
 
 #### Probability Calculations
 Uses normal distribution with Z-score formula:
@@ -56,15 +54,12 @@ Probability = 1 - Φ(Z-score)  [using error function for accuracy]
 - `save_to_db.py` - Saves weekly stats and odds to database
 - `odds_api.py` - Fetches betting odds and spread data
 - `test_thresholds.py` - Main analysis script with full adjustments
-- `test_thresholds_new.py` - Clean API version for web interface
 
 ### Analysis & Calculation Files
 - `Odds_vs_Stats_Check.py` - Core comparison logic and flagging
 - `probability_calc.py` - Statistical probability calculations using erf function
 - `team_stats.py` - Team statistics processing and league averages
 - `target_share_calc.py` - Reception share calculations
-- `opportunity_adjustment.py` - Opportunity-based stat adjustments
-- `game_script_adjustment.py` - Spread-based game script adjustments
 
 ### Web Interface
 - `app.py` - FastAPI backend with REST endpoints
@@ -144,11 +139,6 @@ For rushing yards:
 ```
 Adjusted Yards = Player 3-Game Avg × (Opponent Rush Defense ÷ League Avg Rush Defense)
 ```
-
-### Game Script Adjustments
-- **Favorites (-3.5 or more)**: +5% rushing stats, -3% receiving stats
-- **Underdogs (+3.5 or more)**: -5% rushing stats, +5% receiving stats
-- **Pick'em games**: No adjustment
 
 ### Probability Display
 Results show probability in "X% Over | Y% Under" format where:
