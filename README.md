@@ -36,8 +36,8 @@ Run every command from the project folder. The database path is relative to it.
 **Windows (PowerShell)**
 
 ```powershell
-git clone https://github.com/aberr-kc/nfl_stats_project-Q-Updates.git nfl_stats_project
-cd nfl_stats_project
+git clone https://github.com/aberr-kc/nfl_stats_picker.git
+cd nfl_stats_picker
 python -m venv .venv
 .\.venv\Scripts\Activate.ps1
 python -m pip install -r requirements.txt
@@ -54,8 +54,8 @@ Set-ExecutionPolicy -Scope Process Bypass
 **macOS / Linux (untested)**
 
 ```bash
-git clone https://github.com/aberr-kc/nfl_stats_project-Q-Updates.git nfl_stats_project
-cd nfl_stats_project
+git clone https://github.com/aberr-kc/nfl_stats_picker.git
+cd nfl_stats_picker
 python3 -m venv .venv
 source .venv/bin/activate
 python -m pip install -r requirements.txt
