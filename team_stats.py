@@ -31,9 +31,8 @@ TIMEOUT = 20
 REQUEST_DELAY_S = 2
 
 # Matchup factor strength: f' = 1 + beta * (f - 1), display only.
-# Betas from .agents/tasks/nfl-stats-math-review.md, finding S4 and
-# recommendation #15: fitted on 2025 weeks 5-17 the best beta was
-# rushing -0.02, receiving 0.24, passing 0.36, receptions 0.32.
+# Betas from the math review (finding S4): fitted on 2025 weeks 5-17 the
+# best beta was rushing -0.02, receiving 0.24, passing 0.36, receptions 0.32.
 MATCHUP_BETA = {
     "passing_yards": 0.3,
     "receiving_yards": 0.3,
