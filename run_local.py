@@ -2,6 +2,9 @@ import argparse
 import os
 import uvicorn
 import socket
+from pathlib import Path
+
+from dotenv import load_dotenv
 
 def get_local_ip():
     """Get local IP address"""
@@ -16,6 +19,8 @@ def get_local_ip():
     return ip
 
 if __name__ == "__main__":
+    # .env settings (HOST, ALLOW_REMOTE_REFRESH, NFL_*) apply to the app; real env vars win.
+    load_dotenv(Path(__file__).resolve().parent / ".env")
     parser = argparse.ArgumentParser(description="Run the NFL Stats app locally")
     parser.add_argument(
         "--host",
