@@ -9,3 +9,4 @@ backup_*/
 node_modules/
 refresh_state.json
 *.json.tmp
+.idea/
